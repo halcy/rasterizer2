@@ -9,10 +9,11 @@
 #define ZNEAR FLOAT_FIXED(0.1)
 #define ZFAR FLOAT_FIXED(200.0)
 
-// TODO when textures are in, make this a proper texture transform
+// Texture transform for power-of-two textures
 #define TEX_SIZE 128
-#define TEX_SCALE(x) (abs(x) >> 5)
-#define TEX_TRANSFORM(u, v) ((TEX_SCALE(v) % TEX_SIZE) * TEX_SIZE + (TEX_SCALE(u) % TEX_SIZE))
+#define TEX_SIZE_LOG2 7
+#define TEX_SCALE(x) (abs(x) >> (12 - TEX_SIZE_LOG2))
+#define TEX_TRANSFORM(u, v) (((TEX_SCALE(v) & (TEX_SIZE - 1)) << TEX_SIZE_LOG2) + (TEX_SCALE(u) & (TEX_SIZE - 1)))
 
 // Vertex / Triangle as stored by model (per-face normals)
 typedef ivec3_t vertex_t;

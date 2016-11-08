@@ -64,10 +64,10 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
     int32_t leftVd;
 
     // Texcoords and texcoord x deltas
-    int16_t U;
-    int16_t V;
-    int16_t UdX;
-    int16_t VdX;
+    int32_t U;
+    int32_t V;
+    int32_t UdX;
+    int32_t VdX;
 
     // Calculate y differences
     int32_t upperDiff = upperVertex.p.y - centerVertex.p.y;
@@ -88,15 +88,15 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
     if(width == 0) {
         return;
     }
-    UdX = idiv(imul(temp, INT_FIXED(lowerVertex.uw - upperVertex.uw)) + INT_FIXED(upperVertex.uw - centerVertex.uw), width);
-    VdX = idiv(imul(temp, INT_FIXED(lowerVertex.vw - upperVertex.vw)) + INT_FIXED(upperVertex.vw - centerVertex.vw), width);
+    UdX = idiv(imul(temp, lowerVertex.uw - upperVertex.uw) + upperVertex.uw - centerVertex.uw, width);
+    VdX = idiv(imul(temp, lowerVertex.vw - upperVertex.vw) + upperVertex.vw - centerVertex.vw, width);
     
     // Guard against special case B: Flat upper edge
     if(upperDiff == 0 ) {
         if(upperVertex.p.x < centerVertex.p.x) {
             leftX = upperVertex.p.x;
-            leftU = INT_FIXED(upperVertex.uw);
-            leftV = INT_FIXED(upperVertex.vw);
+            leftU = upperVertex.uw;
+            leftV = upperVertex.vw;
             rightX = centerVertex.p.x;
 
             leftXd = idiv(upperVertex.p.x - lowerVertex.p.x, lowerDiff);
@@ -104,16 +104,16 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
         }
         else {
             leftX = centerVertex.p.x;
-            leftU = INT_FIXED(centerVertex.uw);
-            leftV = INT_FIXED(centerVertex.vw);
+            leftU = centerVertex.uw;
+            leftV = centerVertex.vw;
             rightX = upperVertex.p.x;
 
             leftXd = idiv(centerVertex.p.x - lowerVertex.p.x, lowerDiff);
             rightXd = idiv(upperVertex.p.x - lowerVertex.p.x, lowerDiff);
         }
 
-        leftUd = idiv(leftU - INT_FIXED(lowerVertex.uw), lowerDiff);
-        leftVd = idiv(leftV - INT_FIXED(lowerVertex.vw), lowerDiff);
+        leftUd = idiv(leftU - lowerVertex.uw, lowerDiff);
+        leftVd = idiv(leftV - lowerVertex.vw, lowerDiff);
 
         goto lower_half_render;
     }
@@ -125,22 +125,22 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
     // Upper triangle half
     leftX = rightX = upperVertex.p.x;
 
-    leftU = INT_FIXED(upperVertex.uw);
-    leftV = INT_FIXED(upperVertex.vw);
+    leftU = upperVertex.uw;
+    leftV = upperVertex.vw;
 
     if(upperCenter < upperLower) {
         leftXd = upperCenter;
         rightXd = upperLower;
 
-        leftUd = idiv(leftU - INT_FIXED(centerVertex.uw), upperDiff);
-        leftVd = idiv(leftV - INT_FIXED(centerVertex.vw), upperDiff);
+        leftUd = idiv(leftU - centerVertex.uw, upperDiff);
+        leftVd = idiv(leftV - centerVertex.vw, upperDiff);
     }
     else {
         leftXd = upperLower;
         rightXd = upperCenter;
 
-        leftUd = idiv(leftU - INT_FIXED(lowerVertex.uw), lowerDiff);
-        leftVd = idiv(leftV - INT_FIXED(lowerVertex.vw), lowerDiff);
+        leftUd = idiv(leftU - lowerVertex.uw, lowerDiff);
+        leftVd = idiv(leftV - lowerVertex.vw, lowerDiff);
     }
 
     U = leftU;
@@ -159,6 +159,7 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
                     V += VdX;
                     x++;
                 }
+                
                 while(x <= xMax) {
                     image[x+offset] = shadetex[TEX_TRANSFORM(U, V)];
                     x++;
@@ -188,11 +189,11 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
         leftX = centerVertex.p.x;
         leftXd = idiv(centerVertex.p.x - lowerVertex.p.x, centerDiff);
 
-        leftU = INT_FIXED(centerVertex.uw);
-        leftV = INT_FIXED(centerVertex.vw);
+        leftU = centerVertex.uw;
+        leftV = centerVertex.vw;
 
-        leftUd = idiv(leftU - INT_FIXED(lowerVertex.uw), centerDiff);
-        leftVd = idiv(leftV - INT_FIXED(lowerVertex.vw), centerDiff);
+        leftUd = idiv(leftU - lowerVertex.uw, centerDiff);
+        leftVd = idiv(leftV - lowerVertex.vw, centerDiff);
     }
     else {
         rightX = centerVertex.p.x;
@@ -353,9 +354,6 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
             tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
             tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;
-            if(i == 0) {
-                printf("%d > %d %d\n", ver, tri.v[ver].uw, tri.v[ver].vw);
-            }
         }
         
         for(int ver = 0; ver < 3; ver++) {
