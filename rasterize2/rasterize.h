@@ -17,7 +17,12 @@
 typedef ivec3_t vertex_t;
 
 typedef struct {
-    int16_t v[4]; // p0, p1, p2, n
+    int32_t u;
+    int32_t v;
+} texcoord_t;
+
+typedef struct {
+    int16_t v[7]; // p0, p1, p2, n, t1, t2, t3
     uint8_t* texture;
 } triangle_t;
 
@@ -40,7 +45,8 @@ typedef struct {
     transformed_vertex_t v[3];
 } transformed_triangle_t;
 
-// A model: Backing vertices / normals / faces, number of faces / vertices / normals, modelview matrix
+// A model: Backing vertices / normals / texcoords / faces, 
+// number of vertices / normals / texcoords / faces, modelview matrix
 typedef struct {
     const vertex_t* vertices;
     const vertex_t* normals;

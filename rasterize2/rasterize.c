@@ -18,7 +18,7 @@ int32_t num_faces_total = 0;
 triangle_t* sorted_triangles = 0;
 
 // Triangle drawer
-inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tri, uint8_t* shadetex) {
+static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tri, uint8_t* shadetex) {
     // Local vertex sorting
     transformed_vertex_t upperVertex;
     transformed_vertex_t centerVertex;
@@ -319,7 +319,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         for(int32_t i = 0; i < models[m].num_vertices; i++) {
             transform_vertex.p = imat4x4transform(mvp, ivec4(models[m].vertices[i].x, models[m].vertices[i].y, models[m].vertices[i].z, INT_FIXED(1)));
 
-            if (transform_vertex.p.z < 0 || transform_vertex.p.z > transform_vertex.p.w) {
+            if (transform_vertex.p.z <= 0 || transform_vertex.p.z >= transform_vertex.p.w) {
                 transformed_vertices[i + vert_offset].clip = 1;
                 continue;
             }

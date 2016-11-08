@@ -6,8 +6,14 @@
 #ifndef __FIXEDMATH_H__
 #define __FIXEDMATH_H__
 
+// For sqrt
+#include <math.h>
+
 // Scalars
 #include <stdint.h>
+
+// "Signed shift" warnings. Should your compiler actually not
+// compile signed shifts as arithmetic, then well, change this.
 #define FLOAT_FIXED(val)  (int32_t)((val)*4096)
 #define INT_FIXED(val) ((val) << 12)
 
@@ -22,11 +28,11 @@ static inline int32_t imul(int32_t a, int32_t b) { return (int32_t)imul64(a, b);
 static inline int64_t idiv64(int64_t num, int64_t den) { return (num << 12) / den; }
 static inline int32_t idiv(int32_t num, int32_t den) { return (int32_t)idiv64(num, den); }
 
-static inline int32_t isqrt(int32_t val) { return (int32_t)sqrt(((double)val)*4096.0); }
+static inline int32_t isqrt(int32_t val) { return (int32_t)sqrt(((double)val)*4096.0); } // TODO how good is sqrt on Cortex-M4F?
 
-static inline int32_t imin(int32_t a, int32_t b) { return a<b ? a : b; }
-static inline int32_t imax(int32_t a, int32_t b) { return a>b ? a : b; }
-static inline int32_t iabs(int32_t a) { return a<0 ? -a : a; }
+static inline int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
+static inline int32_t imax(int32_t a, int32_t b) { return a > b ? a : b; }
+static inline int32_t iabs(int32_t a) { return a < 0 ? -a : a; }
 
 // Note that trig functions use an input range of 0 -> 1
 int32_t isin(int a);

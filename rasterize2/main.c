@@ -98,8 +98,11 @@ void keyboard(unsigned char key, int x, int y) {
 int main(int argc, char **argv) {
 
     // Don't lock to 60hz (nvidia specific)
+#ifdef _WIN32
     _putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
-    
+#else    
+    putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
+#endif
     // Create model
     models[0] = get_model_cityscape();
     
