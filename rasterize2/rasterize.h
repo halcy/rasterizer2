@@ -10,8 +10,9 @@
 #define ZFAR FLOAT_FIXED(200.0)
 
 // TODO when textures are in, make this a proper texture transform
-#define TEX_SIZE 16
-#define TEX_TRANSFORM(u, v) (((v) % TEX_SIZE) * TEX_SIZE + ((u) % TEX_SIZE))
+#define TEX_SIZE 128
+#define TEX_SCALE(x) (abs(x) >> 5)
+#define TEX_TRANSFORM(u, v) ((TEX_SCALE(v) % TEX_SIZE) * TEX_SIZE + (TEX_SCALE(u) % TEX_SIZE))
 
 // Vertex / Triangle as stored by model (per-face normals)
 typedef ivec3_t vertex_t;
@@ -22,7 +23,8 @@ typedef struct {
 } texcoord_t;
 
 typedef struct {
-    int16_t v[7]; // p0, p1, p2, n, t1, t2, t3
+    int16_t v[8]; // p0, p1, p2, n, t1, t2, t3 TODO textures
+    uint8_t model_id;
     uint8_t* texture;
 } triangle_t;
 
@@ -50,10 +52,12 @@ typedef struct {
 typedef struct {
     const vertex_t* vertices;
     const vertex_t* normals;
+    const texcoord_t* texcoords;
     const triangle_t* faces;
 
     int16_t num_vertices;
     int16_t num_normals;
+    int16_t num_texcoords;
     int16_t num_faces;
 
     imat4x4_t modelview;

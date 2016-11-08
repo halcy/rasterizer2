@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
     putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
 #endif
     // Create model
-    models[0] = get_model_cityscape();
+    models[0] = get_model_cityscape2();
     
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);

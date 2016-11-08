@@ -10,7 +10,7 @@
 // Viewport transform
 #define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
 
-// Storage for post-transform vertices / triangles
+// Storage for post-transform vertices / texcoords / triangles // TODO normals
 int32_t num_vertices_total = 0;
 transformed_vertex_t* transformed_vertices = 0;
 
@@ -160,9 +160,7 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
                     x++;
                 }
                 while(x <= xMax) {
-                    int32_t hb = FIXED_INT(U) & 15;
-                    int32_t vb = FIXED_INT(V) & 15;
-                    image[x+offset] = shadetex[TEX_TRANSFORM(hb, vb)];
+                    image[x+offset] = shadetex[TEX_TRANSFORM(U, V)];
                     x++;
                     U += UdX;
                     V += VdX;
@@ -222,9 +220,7 @@ lower_half_render:
                     x++;
                 }
                 while(x <= xMax) {
-                    int32_t hb = FIXED_INT(U) & 15;
-                    int32_t vb = FIXED_INT(V) & 15;
-                    image[x+offset] = shadetex[TEX_TRANSFORM(hb, vb)];
+                    image[x+offset] = shadetex[TEX_TRANSFORM(U, V)];
                     x++;
                     U += UdX;
                     V += VdX;
@@ -301,6 +297,9 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     int32_t face_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         memcpy(&sorted_triangles[face_offset], models[m].faces, sizeof(triangle_t) * models[m].num_faces);
+        for(int i = face_offset; i < face_offset + models[m].num_faces; i++) {
+            sorted_triangles[i].model_id = m;
+        }
         face_offset += models[m].num_faces;
     }
 
@@ -342,7 +341,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
 
      // Get shade value
-    uint8_t* texture = malloc(16*16);
+    uint8_t* texture = malloc(128 * 128);
     
     // Rasterize triangle-order
     transformed_triangle_t tri;
@@ -352,6 +351,11 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
 
         for(int ver = 0; ver < 3; ver++) {
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
+            tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
+            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;
+            if(i == 0) {
+                printf("%d > %d %d\n", ver, tri.v[ver].uw, tri.v[ver].vw);
+            }
         }
         
         for(int ver = 0; ver < 3; ver++) {
@@ -376,9 +380,9 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         
         // Texturize
         // TODO texcoords (should be in model but presently are not)
-        for(int y = 0; y < 16; y++) {
-            for(int x = 0; x < 16; x++) {
-                texture[y * 16 + x] = (uint8_t)sorted_triangles[i].texture;
+        for(int y = 0; y < 128; y++) {
+            for(int x = 0; x < 128; x++) {
+                texture[y * 128 + x] = x < 64 ? 0 : 128;
             }
         }
         
