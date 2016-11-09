@@ -111,7 +111,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="cityscape.c" />
     <ClCompile Include="cityscape2.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="rasterize.c" />

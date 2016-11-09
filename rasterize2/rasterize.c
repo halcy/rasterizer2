@@ -348,7 +348,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     
     // Figure out horizon height (TODO this horizon height code is terrible, essentialls brute-forces horizon height)
     ivec4_t horizon;
-    ivec4_t best_horizon;
+    ivec4_t best_horizon = ivec4(0, 0, 0, 0);
     for(int angle = 0; angle < INT_FIXED(1); angle += FLOAT_FIXED(0.05)) {
         horizon = imat4x4transform(camera, ivec4(isin(angle) << 7, 0, icos(angle) << 7, INT_FIXED(0)));
         if(iabs(horizon.z) > iabs(best_horizon.z)) {
