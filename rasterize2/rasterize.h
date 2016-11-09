@@ -12,7 +12,7 @@
 // Texture transform for power-of-two textures
 #define TEX_SIZE 128
 #define TEX_SIZE_LOG2 7
-#define TEX_SCALE(x) (abs(x) >> (12 - TEX_SIZE_LOG2))
+#define TEX_SCALE(x) ((x) >> (12 - TEX_SIZE_LOG2))
 #define TEX_TRANSFORM(u, v) (((TEX_SCALE(v) & (TEX_SIZE - 1)) << TEX_SIZE_LOG2) + (TEX_SCALE(u) & (TEX_SIZE - 1)))
 
 // Vertex / Triangle as stored by model (per-face normals)
@@ -24,7 +24,7 @@ typedef struct {
 } texcoord_t;
 
 typedef struct {
-    int16_t v[8]; // p0, p1, p2, n, t1, t2, t3 TODO textures
+    int16_t v[8]; // p0, p1, p2, n, t1, t2, t3, texid
     uint8_t model_id;
     uint8_t* texture;
 } triangle_t;
@@ -39,8 +39,8 @@ typedef struct {
 typedef struct {
     ivec3_t p;
     uint8_t clip;
-    int16_t uw;
-    int16_t vw;
+    int32_t uw;
+    int32_t vw;
 } transformed_vertex_t;
 
 // A single post-transform triangle

@@ -221,4 +221,76 @@ static inline imat4x4_t imat4x4mul(imat4x4_t a, imat4x4_t b) {
     }
     return res;
 }
+
+static inline imat4x4_t imat4x4affineinverse(imat4x4_t m) {
+    imat4x4_t res;
+    int32_t det=imul(imul(m.m[0],m.m[5]),m.m[10])-imul(imul(m.m[0],m.m[6]),m.m[9])+
+                imul(imul(m.m[1],m.m[6]),m.m[8])-imul(imul(m.m[1],m.m[4]),m.m[10])+
+                imul(imul(m.m[2],m.m[4]),m.m[9])-imul(imul(m.m[2],m.m[5]),m.m[8]);
+    // singular if det==0
+
+    res.m[0]=idiv((imul(m.m[5],m.m[10])-imul(m.m[6],m.m[9])),det);
+    res.m[4]=-idiv((imul(m.m[4],m.m[10])-imul(m.m[6],m.m[8])),det);
+    res.m[8]=idiv((imul(m.m[4],m.m[9])-imul(m.m[5],m.m[8])),det);
+
+    res.m[1]=-idiv((imul(m.m[1],m.m[10])-imul(m.m[2],m.m[9])),det);
+    res.m[5]=idiv((imul(m.m[0],m.m[10])-imul(m.m[2],m.m[8])),det);
+    res.m[9]=-idiv((imul(m.m[0],m.m[9])-imul(m.m[1],m.m[8])),det);
+
+    res.m[2]=idiv((imul(m.m[1],m.m[6])-imul(m.m[2],m.m[5])),det);
+    res.m[6]=-idiv((imul(m.m[0],m.m[6])-imul(m.m[2],m.m[4])),det);
+    res.m[10]=idiv((imul(m.m[0],m.m[5])-imul(m.m[1],m.m[4])),det);
+
+    res.m[3]=0;
+    res.m[7]=0;
+    res.m[11]=0;
+
+    res.m[12]=-(imul(m.m[12],res.m[0])+imul(m.m[13],res.m[4])+imul(m.m[14],res.m[8]));
+    res.m[13]=-(imul(m.m[12],res.m[1])+imul(m.m[13],res.m[5])+imul(m.m[14],res.m[9]));
+    res.m[14]=-(imul(m.m[12],res.m[2])+imul(m.m[13],res.m[6])+imul(m.m[14],res.m[10]));
+    res.m[15]=INT_FIXED(1);
+
+    return res;
+}
+
+static inline imat4x4_t imat4x4inverse(imat4x4_t m) {
+    imat4x4_t res;
+
+    int32_t a0=imul(m.m[0],m.m[5])-imul(m.m[1],m.m[4]);
+    int32_t a1=imul(m.m[0],m.m[6])-imul(m.m[2],m.m[4]);
+    int32_t a2=imul(m.m[0],m.m[7])-imul(m.m[3],m.m[4]);
+    int32_t a3=imul(m.m[1],m.m[6])-imul(m.m[2],m.m[5]);
+    int32_t a4=imul(m.m[1],m.m[7])-imul(m.m[3],m.m[5]);
+    int32_t a5=imul(m.m[2],m.m[7])-imul(m.m[3],m.m[6]);
+    int32_t b0=imul(m.m[8],m.m[13])-imul(m.m[9],m.m[12]);
+    int32_t b1=imul(m.m[8],m.m[14])-imul(m.m[10],m.m[12]);
+    int32_t b2=imul(m.m[8],m.m[15])-imul(m.m[11],m.m[12]);
+    int32_t b3=imul(m.m[9],m.m[14])-imul(m.m[10],m.m[13]);
+    int32_t b4=imul(m.m[9],m.m[15])-imul(m.m[11],m.m[13]);
+    int32_t b5=imul(m.m[10],m.m[15])-imul(m.m[11],m.m[14]);
+    int32_t det=imul(a0,b5)-imul(a1,b4)+imul(a2,b3)+imul(a3,b2)-imul(a4,b1)+imul(a5,b0);
+    // singular if det==0
+
+    res.m[0]=idiv((imul(m.m[5],b5)-imul(m.m[6],b4)+imul(m.m[7],b3)),det);
+    res.m[4]=-idiv((imul(m.m[4],b5)-imul(m.m[6],b2)+imul(m.m[7],b1)),det);
+    res.m[8]=idiv((imul(m.m[4],b4)-imul(m.m[5],b2)+imul(m.m[7],b0)),det);
+    res.m[12]=-idiv((imul(m.m[4],b3)-imul(m.m[5],b1)+imul(m.m[6],b0)),det);
+
+    res.m[1]=-idiv((imul(m.m[1],b5)-imul(m.m[2],b4)+imul(m.m[3],b3)),det);
+    res.m[5]=idiv((imul(m.m[0],b5)-imul(m.m[2],b2)+imul(m.m[3],b1)),det);
+    res.m[9]=-idiv((imul(m.m[0],b4)-imul(m.m[1],b2)+imul(m.m[3],b0)),det);
+    res.m[13]=idiv((imul(m.m[0],b3)-imul(m.m[1],b1)+imul(m.m[2],b0)),det);
+
+    res.m[2]=idiv((imul(m.m[13],a5)-imul(m.m[14],a4)+imul(m.m[15],a3)),det);
+    res.m[6]=-idiv((imul(m.m[12],a5)-imul(m.m[14],a2)+imul(m.m[15],a1)),det);
+    res.m[10]=idiv((imul(m.m[12],a4)-imul(m.m[13],a2)+imul(m.m[15],a0)),det);
+    res.m[14]=-idiv((imul(m.m[12],a3)-imul(m.m[13],a1)+imul(m.m[14],a0)),det);
+
+    res.m[3]=-idiv((imul(m.m[9],a5)-imul(m.m[10],a4)+imul(m.m[11],a3)),det);
+    res.m[7]=idiv((imul(m.m[8],a5)-imul(m.m[10],a2)+imul(m.m[11],a1)),det);
+    res.m[11]=-idiv((imul(m.m[8],a4)-imul(m.m[9],a2)+imul(m.m[11],a0)),det);
+    res.m[15]=idiv((imul(m.m[8],a3)-imul(m.m[9],a1)+imul(m.m[10],a0)),det);
+
+    return res;
+}
 #endif

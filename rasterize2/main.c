@@ -66,9 +66,11 @@ void display(void) {
     
     // Update modelview matrices
     int32_t time_val = FLOAT_FIXED(sin(nanotime() * 0.1f) * 0.3f);
-    imat4x4_t camera = imat4x4translate(ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos)));
-    camera = imat4x4mul(camera, imat4x4rotatex(FLOAT_FIXED(-0.1)));
-
+    
+    imat4x4_t camera = imat4x4translate(ivec3(0, FLOAT_FIXED(ypos), FLOAT_FIXED(zpos)));
+    camera = imat4x4mul(camera, imat4x4rotatey(FLOAT_FIXED(xpos * 0.1)));
+    camera = imat4x4mul(imat4x4rotatex(FLOAT_FIXED(-0.1)), camera);    
+    
     // Draw model to screen buffer
     rasterize(framebuffer, models, NUM_MODELS, camera, projection);
     

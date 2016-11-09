@@ -23,8 +23,7 @@ CFLAGS= \
 # 	-masm=intel -m3dnow -mtune=core2
 
 LIBS=-lm
-OBJECTS=cityscape.o \
-	cityscape2.o \
+OBJECTS=cityscape2.o \
 	rasterize.o \
 	fixedmath.o \
 	main.o

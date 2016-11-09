@@ -8,7 +8,7 @@ use strict;
 
 my $scale = 0.4;
 my $offset = 0;
-my $name = "cityscape";
+my $name = "cityscape2";
 
 my @vertices;
 my @texcoords;
@@ -17,6 +17,9 @@ my @faces;
 my $material = 0;
 my $lastmaterial = 0;
 my %materials = ();
+
+my $texcoord_min_u = 0;
+my $texcoord_min_v = 0;
 
 while(<>) {
     if( $_ =~ /usemtl ([^ ]+)/ ) {
@@ -35,6 +38,8 @@ while(<>) {
     }
     
     if( $_ =~ /vt ([^ ]+) ([^ ]+)/ ) {
+        $texcoord_min_u = $1 < $texcoord_min_u ? $1 : $texcoord_min_u;
+        $texcoord_min_v = $2 < $texcoord_min_v ? $2 : $texcoord_min_v;
         push @texcoords, [$1, $2];
     }
 
@@ -42,6 +47,10 @@ while(<>) {
         push @faces, [$1, $4, $7, 0, $2, $5, $8, $material]; 
     }
 }
+
+# Make texcoords positive (they wrap on 1)
+$texcoord_min_u = int($texcoord_min_u) + 1.0;
+$texcoord_min_v = int($texcoord_min_v) + 1.0;
 
 my @faces_proper;
 my %normals = ();
@@ -126,8 +135,8 @@ print "};\n\n";
 print "static texcoord_t texcoords[] = {\n";
 foreach(@texcoords) {
         my @texcoord = @{$_};
-        print "    {FLOAT_FIXED(" . $texcoord[0]*1.0 .
-                "), FLOAT_FIXED(" . $texcoord[1]*1.0 . ")}, \n";
+        print "    {FLOAT_FIXED(" . ($texcoord[0] + $texcoord_min_u) .
+                "), FLOAT_FIXED(" . ($texcoord[1] + $texcoord_min_v) . ")}, \n";
 }
 print "};\n\n";
 

@@ -127,7 +127,7 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
 
     leftU = upperVertex.uw;
     leftV = upperVertex.vw;
-
+    
     if(upperCenter < upperLower) {
         leftXd = upperCenter;
         rightXd = upperLower;
@@ -315,7 +315,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         for(int32_t i = 0; i < models[m].num_vertices; i++) {
             transform_vertex.p = imat4x4transform(mvp, ivec4(models[m].vertices[i].x, models[m].vertices[i].y, models[m].vertices[i].z, INT_FIXED(1)));
 
-            if (transform_vertex.p.z <= 0 || transform_vertex.p.z >= transform_vertex.p.w) {
+            if(transform_vertex.p.z <= 0 || transform_vertex.p.z >= transform_vertex.p.w) {
                 transformed_vertices[i + vert_offset].clip = 1;
                 continue;
             }
@@ -336,7 +336,24 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
 
     // Depth sort
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
+    
+    // Figure out horizon height (TODO this horizon height code is terrible, essentialls brute-forces horizon height)
+    ivec4_t horizon;
+    ivec4_t best_horizon;
+    for(int angle = 0; angle < INT_FIXED(1); angle += FLOAT_FIXED(0.05)) {
+        horizon = imat4x4transform(camera, ivec4(isin(angle) << 7, 0, icos(angle) << 7, INT_FIXED(0)));
+        if(iabs(horizon.z) > iabs(best_horizon.z)) {
+            best_horizon = horizon;
+        }
+    }
+    horizon = imat4x4transform(projection, best_horizon);
 
+    int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
+    horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
+    
+    memset(&framebuffer[0], 0, horizon_y * SCREEN_WIDTH);
+    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 128, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
+    
     // Rasterize triangle-order
     transformed_triangle_t tri;
     uint32_t skip = 0;
@@ -346,7 +363,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         for(int ver = 0; ver < 3; ver++) {
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
             tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
-            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;
+            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;           
         }
         
         for(int ver = 0; ver < 3; ver++) {
