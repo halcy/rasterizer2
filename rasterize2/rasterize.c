@@ -274,7 +274,7 @@ static int triClosestDepthCompare(const void *p1, const void *p2) {
 }
 
 // Actual model rasterizer
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t projection) {
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection) {
     // Count vertices / faces, possibly re-alloc storage
     int32_t vert_count = 0;
     int32_t face_count = 0;
@@ -304,15 +304,11 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         face_offset += models[m].num_faces;
     }
 
-    // Dumb hack: Colourize faces (TODO remove once textures are A Thing)
-    for (int32_t i = 0; i < num_faces_total; i++) {
-        sorted_triangles[i].texture = (uint8_t*)i;
-    }
-
     int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
-        // Mvp matrix from mv and p
-        imat4x4_t mvp = imat4x4mul(projection, models[m].modelview);
+        // Mvp matrix from camera, mv and p
+        imat4x4_t mvp = imat4x4mul(models[m].modelview, camera);
+        mvp = imat4x4mul(projection, mvp);
 
         // Transform all vertices
         shade_vertex_t transform_vertex;
@@ -341,9 +337,6 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     // Depth sort
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
 
-     // Get shade value
-    uint8_t* texture = malloc(128 * 128);
-    
     // Rasterize triangle-order
     transformed_triangle_t tri;
     uint32_t skip = 0;
@@ -376,17 +369,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
             continue;
         }
         
-        // Texturize
-        // TODO texcoords (should be in model but presently are not)
-        for(int y = 0; y < 128; y++) {
-            for(int x = 0; x < 128; x++) {
-                texture[y * 128 + x] = x < 64 ? 0 : 128;
-            }
-        }
-        
         // Draw triangle
-        rasterize_triangle(framebuffer, &tri, texture);
+        rasterize_triangle(framebuffer, &tri, sorted_triangles[i].texture);
     }
-    
-    free(texture);
 }

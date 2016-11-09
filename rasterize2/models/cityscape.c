@@ -1,6 +1,6 @@
 /**
-* Model: cityscape
-*/
+ * Model: cityscape
+ */
 
 #include "rasterize.h"
 
@@ -38704,7 +38704,7 @@ static triangle_t faces[] = {
     {3866, 10304, 11047, 494, 10808, 10809, 2643, 3},
 };
 
-model_t get_model_cityscape2() {
+model_t get_model_cityscape() {
     model_t model;
 
     model.vertices = vertices;
@@ -38722,7 +38722,7 @@ model_t get_model_cityscape2() {
         0, INT_FIXED(1), 0, 0,
         0, 0, INT_FIXED(1), 0,
         0, 0, 0, INT_FIXED(1)
-        );
+    );
 
     return model;
 }

@@ -51,10 +51,10 @@ typedef struct {
 // A model: Backing vertices / normals / texcoords / faces, 
 // number of vertices / normals / texcoords / faces, modelview matrix
 typedef struct {
-    const vertex_t* vertices;
-    const vertex_t* normals;
-    const texcoord_t* texcoords;
-    const triangle_t* faces;
+    vertex_t* vertices;
+    vertex_t* normals;
+    texcoord_t* texcoords;
+    triangle_t* faces;
 
     int16_t num_vertices;
     int16_t num_normals;
@@ -65,6 +65,6 @@ typedef struct {
 } model_t;
 
 // Actual model drawer
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t projection);
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection);
 
 #endif

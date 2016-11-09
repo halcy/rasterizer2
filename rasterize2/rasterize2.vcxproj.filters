@@ -27,6 +27,9 @@
     <ClCompile Include="fixedmath.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="cityscape2.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cityscape.h">
@@ -36,6 +39,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="fixedmath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bmp_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

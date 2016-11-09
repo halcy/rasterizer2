@@ -29,7 +29,7 @@ while(<>) {
             $lastmaterial++;
         }
     }
-        
+
     if( $_ =~ /v ([^ ]+) ([^ ]+) ([^ ]+)/ ) {
         push @vertices, [$1, $2, $3];
     }
@@ -39,7 +39,7 @@ while(<>) {
     }
 
     if( $_ =~ /f ([0-9]+)\/([0-9]*)\/([0-9]+) ([0-9]+)\/([0-9]*)\/([0-9]+) ([0-9]+)\/([0-9]*)\/([0-9]+)/ ) {
-        push @faces, [$1, $4, $7, 0, $2, $5, $8]; 
+        push @faces, [$1, $4, $7, 0, $2, $5, $8, $material]; 
     }
 }
 
@@ -105,41 +105,68 @@ print "#define NUM_NORMALS " . scalar @normalsarr . "\n";
 print "#define NUM_TEXCOORDS " . scalar @texcoords . "\n";
 print "#define NUM_FACES " . scalar @faces_proper . "\n\n";
 
-print "static const vertex_t vertices[] = {\n";
+print "static vertex_t vertices[] = {\n";
 foreach(@vertices) {
     my @vertex = @{$_};
-    print "\t{FLOAT_FIXED(" . $vertex[0]*$scale .
+    print "    {FLOAT_FIXED(" . $vertex[0]*$scale .
         "), FLOAT_FIXED(" . $vertex[1]*$scale .
         "), FLOAT_FIXED(" . $vertex[2]*$scale . ")}, \n";
 }
 print "};\n\n";
 
-print "static const vertex_t normals[] = {\n";
+print "static vertex_t normals[] = {\n";
 foreach(@normalsarr) {
         my @normal = @{$_};
-        print "\t{FLOAT_FIXED(" . $normal[0]*1.0 .
+        print "    {FLOAT_FIXED(" . $normal[0]*1.0 .
                 "), FLOAT_FIXED(" . $normal[1]*1.0 .
                 "), FLOAT_FIXED(" . $normal[2]*1.0 . ")}, \n";
 }
 print "};\n\n";
 
-print "static const texcoord_t texcoords[] = {\n";
+print "static texcoord_t texcoords[] = {\n";
 foreach(@texcoords) {
         my @texcoord = @{$_};
-        print "\t{FLOAT_FIXED(" . $texcoord[0]*1.0 .
+        print "    {FLOAT_FIXED(" . $texcoord[0]*1.0 .
                 "), FLOAT_FIXED(" . $texcoord[1]*1.0 . ")}, \n";
 }
 print "};\n\n";
 
-print "static const triangle_t faces[] = {\n";
+print "static triangle_t faces[] = {\n";
 foreach(@faces) {
     my @face = @{$_};
-    print "\t{" . ($face[0] - 1 + $offset) . ", " .
+    print "    {" . ($face[0] - 1 + $offset) . ", " .
                 ($face[1] - 1 + $offset) . ", " .
                 ($face[2] - 1 + $offset) . ", " .
                 ($face[3] - 1 + $offset) . ", " .
                 ($face[4] - 1 + $offset) . ", " .
                 ($face[5] - 1 + $offset) . ", " .
-                ($face[6] - 1 + $offset) . "},\n";
+                ($face[6] - 1 + $offset) . ", " .				
+                ($face[7]) . "},\n";
 }
-print "};\n";
+print "};\n\n";
+
+print "model_t get_model_$name() {\n";
+print <<"RETURN_FUNC";
+    model_t model;
+
+    model.vertices = vertices;
+    model.normals = normals;
+    model.texcoords = texcoords;
+    model.faces = faces;
+
+    model.num_vertices = NUM_VERTICES;
+    model.num_normals = NUM_NORMALS;
+    model.num_texcoords = NUM_TEXCOORDS;
+    model.num_faces = NUM_FACES;
+
+    model.modelview = imat4x4(
+        INT_FIXED(1), 0, 0, 0,
+        0, INT_FIXED(1), 0, 0,
+        0, 0, INT_FIXED(1), 0,
+        0, 0, 0, INT_FIXED(1)
+    );
+
+    return model;
+}
+
+RETURN_FUNC

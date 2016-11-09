@@ -19,6 +19,10 @@
 
 #include "rasterize.h"
 #include "cityscape.h"
+#include "bmp_handler.h"
+
+// 0-255 R G B to packed RGB332
+#define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
 
 // Frame buffer, frame counter, rendering start time
 uint8_t* framebuffer;
@@ -53,17 +57,20 @@ float nanotime() {
 #endif
 
 // Glut display function.
+float xpos = 0;
+float ypos = 0;
+float zpos = 0;
 void display(void) {
     // Clear screen
-    memset(framebuffer, 0xFF, SCREEN_WIDTH * SCREEN_HEIGHT);
+    memset(framebuffer, RGB332(0, 0, 0), SCREEN_WIDTH * SCREEN_HEIGHT);
     
     // Update modelview matrices
     int32_t time_val = FLOAT_FIXED(sin(nanotime() * 0.1f) * 0.3f);
-    models[0].modelview = imat4x4translate(ivec3(INT_FIXED(0), INT_FIXED(-12), INT_FIXED(-20)));
-    models[0].modelview = imat4x4mul(models[0].modelview, imat4x4rotatey(time_val));
+    imat4x4_t camera = imat4x4translate(ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos)));
+    camera = imat4x4mul(camera, imat4x4rotatex(FLOAT_FIXED(-0.1)));
 
     // Draw model to screen buffer
-    rasterize(framebuffer, models, NUM_MODELS, projection);
+    rasterize(framebuffer, models, NUM_MODELS, camera, projection);
     
     // Buffer to screen
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
@@ -83,8 +90,33 @@ void reshape(int w, int h) {
 }
 
 // Basic glut event loop
+#define MOVEINC 0.1f;
 void keyboard(unsigned char key, int x, int y) {
     switch(key) {
+        case 'w':
+            zpos += MOVEINC;
+        break;
+
+        case 's':
+            zpos -= MOVEINC;
+        break;
+
+        case 'a':
+            xpos += MOVEINC;
+            break;
+
+        case 'd':
+            xpos -= MOVEINC;
+        break;
+
+        case 'q':
+            ypos -= MOVEINC;
+            break;
+
+        case 'e':
+            ypos += MOVEINC;
+        break;
+
         case 27:
             exit(0);
         break;
@@ -92,6 +124,26 @@ void keyboard(unsigned char key, int x, int y) {
         default:
         break;
     }
+}
+
+// Texture loader
+uint8_t* load_texture(const char* path) {
+    int32_t r;
+    int32_t g;
+    int32_t b;
+
+    bmp_info* bmp_file = bmp_open_read(path);
+    uint8_t* texture = (uint8_t*)malloc(bmp_file->x_size * bmp_file->y_size * sizeof(uint8_t));
+
+    for(int y = 0; y < bmp_file->y_size; y++) {
+        for(int x = 0; x < bmp_file->x_size; x++) {
+            bmp_read_pixel(bmp_file, &r, &g, &b);
+            texture[y * bmp_file->x_size + x] = RGB332(r, g, b);
+        }
+    }
+    bmp_close(bmp_file);
+
+    return texture;
 }
 
 // Entry point
@@ -103,6 +155,7 @@ int main(int argc, char **argv) {
 #else    
     putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
 #endif
+
     // Create model
     models[0] = get_model_cityscape2();
     
@@ -111,6 +164,16 @@ int main(int argc, char **argv) {
 
     // Screen buffer
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
+
+    // Textures
+    uint8_t* textures[4];
+    textures[0] = load_texture("windows.bmp");
+    textures[1] = load_texture("roof_sharp.bmp");
+    textures[2] = load_texture("roof_flat.bmp");
+    textures[3] = load_texture("windows.bmp");
+    for (int i = 0; i < models[0].num_faces; i++) {
+        models[0].faces[i].texture = textures[models[0].faces[i].v[7]];
+    }
 
     // Create a window
     glutInit(&argc, argv);
