@@ -9,6 +9,9 @@
 #define ZNEAR FLOAT_FIXED(0.1)
 #define ZFAR FLOAT_FIXED(200.0)
 
+// 0-255 R G B to packed RGB332
+#define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
+
 // Texture transform for power-of-two textures
 #define TEX_SIZE 128
 #define TEX_SIZE_LOG2 7

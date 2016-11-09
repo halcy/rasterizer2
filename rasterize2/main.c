@@ -21,9 +21,6 @@
 #include "cityscape.h"
 #include "bmp_handler.h"
 
-// 0-255 R G B to packed RGB332
-#define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
-
 // Frame buffer, frame counter, rendering start time
 uint8_t* framebuffer;
 int framecount;

@@ -352,7 +352,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
     
     memset(&framebuffer[0], 0, horizon_y * SCREEN_WIDTH);
-    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 128, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
+    memset(&framebuffer[horizon_y * SCREEN_WIDTH], RGB332(1<<5, 1<<5, 1<<6), (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
     
     // Rasterize triangle-order
     transformed_triangle_t tri;
