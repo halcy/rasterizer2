@@ -174,6 +174,9 @@ int main(int argc, char **argv) {
         models[0].faces[i].texture = textures[models[0].faces[i].v[7]];
     }
 
+    // Set up storage required
+    prepare_geometry_storage(models, NUM_MODELS);
+    
     // Create a window
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);

@@ -68,6 +68,8 @@ typedef struct {
 } model_t;
 
 // Actual model drawer
+void prepare_geometry_storage(model_t* models, int32_t num_models);
+void free_geometry_storage();
 void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection);
 
 #endif

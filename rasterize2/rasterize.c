@@ -11,11 +11,11 @@
 #define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
 
 // Storage for post-transform vertices / texcoords / triangles // TODO normals
-int32_t num_vertices_total = 0;
-transformed_vertex_t* transformed_vertices = 0;
+static int32_t num_vertices_total = 0;
+static transformed_vertex_t* transformed_vertices = 0;
 
-int32_t num_faces_total = 0;
-triangle_t* sorted_triangles = 0;
+static int32_t num_faces_total = 0;
+static triangle_t* sorted_triangles = 0;
 
 // Triangle drawer
 static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tri, uint8_t* shadetex) {
@@ -273,9 +273,9 @@ static int triClosestDepthCompare(const void *p1, const void *p2) {
     );
 }
 
-// Actual model rasterizer
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection) {
-    // Count vertices / faces, possibly re-alloc storage
+// Set up storage for geometry and copy face data
+void prepare_geometry_storage(model_t* models, int32_t num_models) {
+    // Count vertices / faces
     int32_t vert_count = 0;
     int32_t face_count = 0;
     for(int32_t m = 0; m < num_models; m++) {
@@ -283,6 +283,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         face_count += models[m].num_faces;
     }
 
+    // (Re)alloc storage
     if(vert_count > num_vertices_total || transformed_vertices == 0) {
         num_vertices_total = vert_count;
         transformed_vertices = (transformed_vertex_t*)realloc(transformed_vertices, sizeof(transformed_vertex_t) * num_vertices_total);
@@ -293,8 +294,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         sorted_triangles = (triangle_t*)realloc(sorted_triangles, sizeof(triangle_t) * num_faces_total);
     }
 
-    // It's bad to do this every frame also wrt sort performance. TODO: Fix by
-    // explicitly initiating models and storage.
+    // Copy face data
     int32_t face_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         memcpy(&sorted_triangles[face_offset], models[m].faces, sizeof(triangle_t) * models[m].num_faces);
@@ -303,7 +303,16 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         }
         face_offset += models[m].num_faces;
     }
+}
 
+// Cleanup
+void free_geometry_storage() {
+    free(transformed_vertices);
+    free(sorted_triangles);
+}
+
+// Actual model rasterizer. Prepare model storage before rendering (whenever scene changes)
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection) {
     int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         // Mvp matrix from camera, mv and p
@@ -348,10 +357,9 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     }
     horizon = imat4x4transform(projection, best_horizon);
 
+    // Draw horizon
     int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
     horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
-    
-    memset(&framebuffer[0], 0, horizon_y * SCREEN_WIDTH);
     memset(&framebuffer[horizon_y * SCREEN_WIDTH], RGB332(1<<5, 1<<5, 1<<6), (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
     
     // Rasterize triangle-order
