@@ -49,6 +49,7 @@ typedef struct {
 // A single post-transform triangle
 typedef struct {
     transformed_vertex_t v[3];
+    int32_t shade;    
 } transformed_triangle_t;
 
 // A model: Backing vertices / normals / texcoords / faces, 

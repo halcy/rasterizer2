@@ -58,9 +58,6 @@ float xpos = 0;
 float ypos = 0;
 float zpos = 0;
 void display(void) {
-    // Clear screen
-    memset(framebuffer, RGB332(0, 0, 0), SCREEN_WIDTH * SCREEN_HEIGHT);
-    
     // Update modelview matrices
     int32_t time_val = FLOAT_FIXED(sin(nanotime() * 0.1f) * 0.3f);
     

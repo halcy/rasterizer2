@@ -10,7 +10,10 @@
 // Viewport transform
 #define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
 
-// Storage for post-transform vertices / texcoords / triangles // TODO normals
+#define RGBCOMPSCALE(col, shift, mask, s) ((FIXED_INT_ROUND(imul(INT_FIXED(((col) >> (shift)) & (mask)), (s)))) << (shift))
+#define RGB322SCALE(col, s) (RGBCOMPSCALE(col, 5, 0x07, s) + RGBCOMPSCALE(col, 2, 0x07, s) + RGBCOMPSCALE(col, 0, 0x03, s))
+
+// Storage for post-transform vertices / texcoords / triangles
 static int32_t num_vertices_total = 0;
 static transformed_vertex_t* transformed_vertices = 0;
 
@@ -161,7 +164,7 @@ static inline void rasterize_triangle(uint8_t* image, transformed_triangle_t* tr
                 }
                 
                 while(x <= xMax) {
-                    image[x+offset] = shadetex[TEX_TRANSFORM(U, V)];
+                    image[x+offset] = RGB322SCALE(shadetex[TEX_TRANSFORM(U, V)], tri->shade);
                     x++;
                     U += UdX;
                     V += VdX;
@@ -221,7 +224,7 @@ lower_half_render:
                     x++;
                 }
                 while(x <= xMax) {
-                    image[x+offset] = shadetex[TEX_TRANSFORM(U, V)];
+                    image[x+offset] = RGB322SCALE(shadetex[TEX_TRANSFORM(U, V)], tri->shade);
                     x++;
                     U += UdX;
                     V += VdX;
@@ -346,7 +349,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     // Depth sort
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
     
-    // Figure out horizon height (TODO this horizon height code is terrible, essentialls brute-forces horizon height)
+    // Figure out horizon height
     ivec4_t horizon;
     ivec4_t best_horizon = ivec4(0, 0, 0, 0);
     for(int angle = 0; angle < INT_FIXED(1); angle += FLOAT_FIXED(0.05)) {
@@ -357,9 +360,10 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     }
     horizon = imat4x4transform(projection, best_horizon);
 
-    // Draw horizon
+    // Draw floor and sky
     int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
     horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
+    memset(&framebuffer[0], RGB332(70, 70, 70), horizon_y * SCREEN_WIDTH);    
     memset(&framebuffer[horizon_y * SCREEN_WIDTH], RGB332(1<<5, 1<<5, 1<<6), (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
     
     // Rasterize triangle-order
@@ -368,12 +372,12 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     for(int32_t i = 0; i < num_faces_total; i++ ) {
         skip = 0;
 
+        // Set up triangle
         for(int ver = 0; ver < 3; ver++) {
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
-            tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
-            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;           
         }
         
+        // Clip / Cull
         for(int ver = 0; ver < 3; ver++) {
             // Vertex clips -> triangle is clipped
             if(tri.v[ver].clip == 1) {
@@ -394,6 +398,16 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
             continue;
         }
         
+        // Set up tex coords
+        for(int ver = 0; ver < 3; ver++) {        
+            tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
+            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;           
+        }
+        
+        // Shade (Hemi lighting, per face)
+        ivec3_t light_dir = ivec3norm(ivec3(FLOAT_FIXED(0.5), FLOAT_FIXED(1.0), FLOAT_FIXED(0.5)));
+        tri.shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[i].model_id].normals[sorted_triangles[i].v[3]], light_dir)));
+            
         // Draw triangle
         rasterize_triangle(framebuffer, &tri, sorted_triangles[i].texture);
     }
