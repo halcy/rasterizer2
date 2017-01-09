@@ -12,13 +12,15 @@
 #include "glext.h"
 #endif
 
+#define ZOOM_LEVEL 4
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
 
 #include "rasterize.h"
-#include "cityscape.h"
+#include "models.h"
 #include "bmp_handler.h"
 
 // Frame buffer, frame counter, rendering start time
@@ -54,21 +56,26 @@ float nanotime() {
 #endif
 
 // Glut display function.
-float xpos = 0;
+float xpos = 1;
 float ypos = 0;
-float zpos = 0;
+float zpos = 1;
+float anglex = 0;
+float angley = 0;
 void display(void) {
     // Update modelview matrices
     int32_t time_val = FLOAT_FIXED(sin(nanotime() * 0.1f) * 0.3f);
+
+    ivec3_t eye = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos + 1.0), FLOAT_FIXED(zpos));
+    ivec3_t lookat = ivec3(FLOAT_FIXED(xpos + sin(anglex)), FLOAT_FIXED(ypos + 1.0 + angley), FLOAT_FIXED(zpos + cos(anglex)));
+    ivec3_t up =  ivec3(FLOAT_FIXED(0), FLOAT_FIXED(1), FLOAT_FIXED(0));
     
-    imat4x4_t camera = imat4x4translate(ivec3(0, FLOAT_FIXED(ypos), FLOAT_FIXED(zpos)));
-    camera = imat4x4mul(camera, imat4x4rotatey(FLOAT_FIXED(xpos * 0.1)));
-    camera = imat4x4mul(imat4x4rotatex(FLOAT_FIXED(-0.1)), camera);    
-    
+    imat4x4_t camera = imat4x4lookat(eye, lookat, up);
+
     // Draw model to screen buffer
     rasterize(framebuffer, models, NUM_MODELS, camera, projection);
     
     // Buffer to screen
+    glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
     glutSwapBuffers();
 
@@ -86,28 +93,32 @@ void reshape(int w, int h) {
 }
 
 // Basic glut event loop
-#define MOVEINC 0.1f;
+#define MOVEINC 0.1f
 void keyboard(unsigned char key, int x, int y) {
     switch(key) {
         case 'w':
-            zpos += MOVEINC;
+            xpos += MOVEINC * sin(anglex);
+            zpos += MOVEINC * cos(anglex);
         break;
 
         case 's':
-            zpos -= MOVEINC;
+            xpos -= MOVEINC * sin(anglex);
+            zpos -= MOVEINC * cos(anglex);
         break;
 
         case 'a':
-            xpos += MOVEINC;
+            xpos += MOVEINC * sin(anglex + 3.14159 / 2.0);
+            zpos += MOVEINC * cos(anglex + 3.14159 / 2.0);
             break;
 
         case 'd':
-            xpos -= MOVEINC;
+            xpos -= MOVEINC * sin(anglex + 3.14159 / 2.0);
+            zpos -= MOVEINC * cos(anglex + 3.14159 / 2.0);
         break;
 
         case 'q':
             ypos -= MOVEINC;
-            break;
+        break;
 
         case 'e':
             ypos += MOVEINC;
@@ -120,6 +131,22 @@ void keyboard(unsigned char key, int x, int y) {
         default:
         break;
     }
+    glutPostRedisplay();
+}
+#define SENS 0.001f
+void mouse(int x, int y) {
+    int xc = SCREEN_WIDTH * ZOOM_LEVEL / 2;
+    int yc = SCREEN_HEIGHT * ZOOM_LEVEL / 2;
+    if(x != xc || y != yc) {
+        anglex -= (x - xc) * SENS;
+
+        angley -= (y - yc) * SENS;
+        angley = angley > 3.0 ? 3.0 : angley;
+        angley = angley < -3.0 ? -3.0 : angley;
+
+        glutWarpPointer(xc, yc);
+    }
+    glutPostRedisplay();
 }
 
 // Texture loader
@@ -153,7 +180,7 @@ int main(int argc, char **argv) {
 #endif
 
     // Create model
-    models[0] = get_model_cityscape2();
+    models[0] = get_model_livingroom();
     
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
@@ -162,11 +189,14 @@ int main(int argc, char **argv) {
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
 
     // Textures
-    uint8_t* textures[4];
-    textures[0] = load_texture("windows.bmp");
-    textures[1] = load_texture("roof_sharp.bmp");
+    uint8_t* textures[20];
+    textures[0] = load_texture("baked.bmp");
+    for (int i = 1; i < 20; i++) {
+        textures[i] = textures[0];
+    }
+    /*textures[1] = load_texture("roof_sharp.bmp");
     textures[2] = load_texture("roof_flat.bmp");
-    textures[3] = load_texture("windows.bmp");
+    textures[3] = load_texture("windows.bmp");*/
     for (int i = 0; i < models[0].num_faces; i++) {
         models[0].faces[i].texture = textures[models[0].faces[i].v[7]];
     }
@@ -177,12 +207,14 @@ int main(int argc, char **argv) {
     // Create a window
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
-    glutInitWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+    glutInitWindowSize(SCREEN_WIDTH * ZOOM_LEVEL, SCREEN_HEIGHT * ZOOM_LEVEL);
     glutCreateWindow("rasterizer");
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
-    glutIdleFunc(display);
+    glutPassiveMotionFunc(mouse);
+    glutSetCursor(GLUT_CURSOR_NONE); 
+    //glutIdleFunc(display);
     
     // Run render loop
     starttime = nanotime();

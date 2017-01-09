@@ -12,6 +12,7 @@
 
 #define RGBCOMPSCALE(col, shift, mask, s) ((FIXED_INT_ROUND(imul(INT_FIXED(((col) >> (shift)) & (mask)), (s)))) << (shift))
 #define RGB322SCALE(col, s) (RGBCOMPSCALE(col, 5, 0x07, s) + RGBCOMPSCALE(col, 2, 0x07, s) + RGBCOMPSCALE(col, 0, 0x03, s))
+//#define RGB322SCALE(col, s) (col)
 
 // Storage for post-transform vertices / texcoords / triangles
 static int32_t num_vertices_total = 0;

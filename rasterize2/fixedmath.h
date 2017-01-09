@@ -1,6 +1,7 @@
 /**
 * Fixed point math, inline-in-header part.
-* Adapted from WAHas fixed point vector library by ripping parts not needed out.
+* Adapted from WAHas fixed point vector library by ripping parts not needed out and
+* changing a bunch of matrix constructors
 */
 
 #ifndef __FIXEDMATH_H__
@@ -292,5 +293,40 @@ static inline imat4x4_t imat4x4inverse(imat4x4_t m) {
     res.m[15]=idiv((imul(m.m[8],a3)-imul(m.m[9],a1)+imul(m.m[10],a0)),det);
 
     return res;
+}
+
+static inline ivec3_t ivec3cross(ivec3_t a, ivec3_t b) {
+    return ivec3(
+        imul(a.y, b.z) - imul(a.z, b.y),
+        imul(a.z, b.x) - imul(a.x, b.z),
+        imul(a.x, b.y) - imul(a.y, b.x)
+    );
+}
+
+static inline imat4x4_t imat4x4lookat(ivec3_t eye, ivec3_t lookat, ivec3_t up) {
+    ivec3_t forward = ivec3norm(ivec3sub(lookat, eye));
+    ivec3_t sideways = ivec3norm(ivec3cross(forward, up));
+    ivec3_t realup = ivec3norm(ivec3cross(sideways, forward));
+
+    /*return imat4x4(
+        right.x, realup.x, forward.x, ivec3dot(eye, right),
+        right.y, realup.y, forward.y, ivec3dot(eye, realup),
+        right.z, realup.z, forward.z, ivec3dot(eye, forward),
+        0,       0,        0,         INT_FIXED(1)
+    );*/
+
+    /*return imat4x4(
+        right.x, right.y, right.z, -ivec3dot(eye, right),
+        realup.x, realup.y, realup.z, -ivec3dot(eye, realup),
+        -forward.x, -forward.y, -forward.z, -ivec3dot(eye, forward),
+        0, 0, 0, INT_FIXED(1)
+    );*/
+
+    return imat4x4(
+        sideways.x, sideways.y, sideways.z, -ivec3dot(eye, sideways),
+        realup.x, realup.y, realup.z, -ivec3dot(eye, realup),
+        -forward.x, -forward.y, -forward.z, ivec3dot(eye, forward),
+        0, 0, 0, INT_FIXED(1)
+    );
 }
 #endif
