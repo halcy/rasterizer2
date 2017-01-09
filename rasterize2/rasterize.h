@@ -13,8 +13,10 @@
 #define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
 
 // Texture transform for power-of-two textures
-#define TEX_SIZE 1024
-#define TEX_SIZE_LOG2 10
+//#define TEX_SIZE 1024
+//#define TEX_SIZE_LOG2 10
+#define TEX_SIZE 128
+#define TEX_SIZE_LOG2 7
 #define TEX_SCALE(x) ((x) >> (12 - TEX_SIZE_LOG2))
 #define TEX_TRANSFORM(u, v) (((TEX_SCALE(v) & (TEX_SIZE - 1)) << TEX_SIZE_LOG2) + (TEX_SCALE(u) & (TEX_SIZE - 1)))
 

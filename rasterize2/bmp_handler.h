@@ -101,7 +101,9 @@ bmp_info* bmp_open_read(const char* file_name) {
     info->bmp_file = fopen(file_name, "rb");
 #endif
     bmp_header file_head;
-    fread((char*)(&file_head), 1, sizeof(file_head), info->bmp_file);
+    if(fread((char*)(&file_head), 1, sizeof(file_head), info->bmp_file) == 0) {
+        printf("Warning: Error in bmp read.\n");
+    }
 
     // Set up data for reading
     info->line_max = file_head.x_size * 3;
@@ -152,7 +154,9 @@ void bmp_read_pixel(bmp_info* info, int* r, int* g, int* b) {
     int tmp_x;
     if (info->line_pos == info->line_max) {
         while(info->line_pos % 4 != 0) {
-            fread(&tmp_x, 1, 1, info->bmp_file);
+            if(fread(&tmp_x, 1, 1, info->bmp_file) == 0) {
+                printf("Warning: Error in pixel read.\n");
+            }
             info->line_pos++;
         }
         info->line_pos = 0;

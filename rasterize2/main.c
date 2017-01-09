@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
 #endif
 
     // Create model
-    models[0] = get_model_livingroom();
+    models[0] = get_model_cityscape2();
     
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
@@ -190,13 +190,15 @@ int main(int argc, char **argv) {
 
     // Textures
     uint8_t* textures[20];
-    textures[0] = load_texture("baked.bmp");
-    for (int i = 1; i < 20; i++) {
+    /*textures[0] = load_texture("baked.bmp");
+    /or (int i = 1; i < 20; i++) {
         textures[i] = textures[0];
-    }
-    /*textures[1] = load_texture("roof_sharp.bmp");
+    }*/
+    textures[0] = load_texture("windows.bmp");
+    textures[1] = load_texture("roof_sharp.bmp");
     textures[2] = load_texture("roof_flat.bmp");
-    textures[3] = load_texture("windows.bmp");*/
+    textures[3] = load_texture("windows.bmp");
+    
     for (int i = 0; i < models[0].num_faces; i++) {
         models[0].faces[i].texture = textures[models[0].faces[i].v[7]];
     }

@@ -23,6 +23,7 @@ CFLAGS= \
 
 LIBS=-lm
 OBJECTS=cityscape2.o \
+	livingroom.o \
 	rasterize.o \
 	fixedmath.o \
 	main.o
