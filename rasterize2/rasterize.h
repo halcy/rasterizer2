@@ -42,6 +42,7 @@ typedef struct {
 
 // Vertex in post-transform space
 typedef struct {
+    ivec4_t cp;
     ivec3_t p;
     uint8_t clip;
     int32_t uw;

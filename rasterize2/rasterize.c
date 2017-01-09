@@ -9,6 +9,7 @@
 
 // Viewport transform
 #define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
+#define VIEWPORT_NO_PERSPECTIVE(x, s) (imul((x) + INT_FIXED(1), INT_FIXED((s) / 2)))
 
 #define RGBCOMPSCALE(col, shift, mask, s) ((FIXED_INT_ROUND(imul(INT_FIXED(((col) >> (shift)) & (mask)), (s)))) << (shift))
 #define RGB322SCALE(col, s) (RGBCOMPSCALE(col, 5, 0x07, s) + RGBCOMPSCALE(col, 2, 0x07, s) + RGBCOMPSCALE(col, 0, 0x03, s))
@@ -315,6 +316,113 @@ void free_geometry_storage() {
     free(sorted_triangles);
 }
 
+// Clip a line against znear
+ivec4_t clip_line(ivec4_t a, ivec4_t b) {
+    int32_t dist = idiv(a.z, (a.z - b.z));
+
+    a.x = a.x + imul(dist, b.x - a.x);
+    a.y = a.y + imul(dist, b.y - a.y);
+    a.z = a.z + imul(dist, b.z - a.z);
+    a.w = a.w + imul(dist, b.w - a.w);
+
+    return a;
+}
+
+// Draw a single triangle to the screen afte transformation and clipping
+void draw_textured(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t tri) {
+    // Set up tex coords
+    for(int ver = 0; ver < 3; ver++) {        
+        tri.v[ver].uw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].u;
+        tri.v[ver].vw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].v;           
+    }
+
+    // Shade (Hemi lighting, per face)
+    ivec3_t light_dir = ivec3norm(ivec3(FLOAT_FIXED(0.5), FLOAT_FIXED(1.0), FLOAT_FIXED(0.5)));
+    tri.shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[tri_idx].model_id].normals[sorted_triangles[tri_idx].v[3]], light_dir)));
+
+    // Draw triangle
+    rasterize_triangle(framebuffer, &tri, sorted_triangles[tri_idx].texture);
+}
+
+// Draw a single triangle, view clipping against near/far if need be
+void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t tri) {
+    // Check what needs clipping
+    uint32_t clip = 0;
+
+    // Clip A, B, C are the vertices with clipping verts first
+    int clip_a = -1;
+    int clip_b = -1;
+    int clip_c = -1;
+
+    for(int ver = 0; ver < 3; ver++) {
+        // Vertex clips
+        if(tri.v[ver].clip == 1) {
+            clip += 1;
+            if(clip_a == -1) {
+                clip_a = ver;
+            }
+            else {
+                clip_b = ver;
+            }
+        }
+        else {
+            if(clip_c == -1) {
+                clip_c = ver;
+            }
+            else {
+                clip_b = ver;
+            }
+        }
+    }
+
+    // All vertices clip or far plane clip
+    if(clip >= 3) {
+        return;
+    }
+
+    // One vertex out -> quad, so copy tri 
+    if(clip == 1) {
+        ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_b].cp);
+        tri.v[clip_a].p = ivec3(
+            VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
+            VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
+            transform_pos.z
+        );
+
+        // Additional draw for the bonus triangle
+        draw_textured(framebuffer, models, tri_idx, tri);
+        
+        // Set up final triangle
+        tri.v[clip_b] = tri.v[clip_c];
+        transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
+        tri.v[clip_c].p = ivec3(
+            VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
+            VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
+            transform_pos.z
+        );
+    }
+
+    // Two vertices out -> tri again
+    if (clip == 2) {
+        ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
+        transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
+        tri.v[clip_a].p = ivec3(
+            VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
+            VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
+            transform_pos.z
+        );
+
+        transform_pos = clip_line(tri.v[clip_b].cp, tri.v[clip_c].cp);
+        tri.v[clip_b].p = ivec3(
+            VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
+            VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
+            transform_pos.z
+        );
+    }
+
+    draw_textured(framebuffer, models, tri_idx, tri);
+}
+
 // Actual model rasterizer. Prepare model storage before rendering (whenever scene changes)
 void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection) {
     int32_t vert_offset = 0;
@@ -327,21 +435,29 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         shade_vertex_t transform_vertex;
         for(int32_t i = 0; i < models[m].num_vertices; i++) {
             transform_vertex.p = imat4x4transform(mvp, ivec4(models[m].vertices[i].x, models[m].vertices[i].y, models[m].vertices[i].z, INT_FIXED(1)));
+            transformed_vertices[i + vert_offset].cp = transform_vertex.p;
 
-            if(transform_vertex.p.z <= 0 || transform_vertex.p.z >= transform_vertex.p.w) {
+            transformed_vertices[i + vert_offset].clip = 0;
+
+            // Near clip?
+            if(transform_vertex.p.z <= 0) {
                 transformed_vertices[i + vert_offset].clip = 1;
                 continue;
             }
             else {
-                transformed_vertices[i + vert_offset].clip = 0;
-            }
+                // Far clip?
+                if(transform_vertex.p.z >= transform_vertex.p.w) {
+                    transformed_vertices[i + vert_offset].clip = 3; // Far clip is THREE TIMES as bad as near clip
+                    continue;
+                }
 
-            // Perspective divide and viewport transform
-            transformed_vertices[i + vert_offset].p = ivec3(
-                VIEWPORT(transform_vertex.p.x, transform_vertex.p.w, SCREEN_WIDTH),
-                VIEWPORT(transform_vertex.p.y, transform_vertex.p.w, SCREEN_HEIGHT),
-                transform_vertex.p.z
-            );
+                // No clipping? Perspective divide and viewport transform
+                transformed_vertices[i + vert_offset].p = ivec3(
+                    VIEWPORT(transform_vertex.p.x, transform_vertex.p.w, SCREEN_WIDTH),
+                    VIEWPORT(transform_vertex.p.y, transform_vertex.p.w, SCREEN_HEIGHT),
+                    transform_vertex.p.z
+                );
+            }
         }
 
         vert_offset += models[m].num_vertices;
@@ -364,52 +480,23 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     // Draw floor and sky
     int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
     horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
-    memset(&framebuffer[0], RGB332(70, 70, 70), horizon_y * SCREEN_WIDTH);    
-    memset(&framebuffer[horizon_y * SCREEN_WIDTH], RGB332(1<<5, 1<<5, 1<<6), (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
+    memset(&framebuffer[0], RGB332(1<<1, 1<<1, 1<<1), horizon_y * SCREEN_WIDTH);    
+    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 0x49, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
     
     // Rasterize triangle-order
     transformed_triangle_t tri;
-    uint32_t skip = 0;
     for(int32_t i = 0; i < num_faces_total; i++ ) {
-        skip = 0;
-
         // Set up triangle
         for(int ver = 0; ver < 3; ver++) {
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
         }
         
-        // Clip / Cull
-        for(int ver = 0; ver < 3; ver++) {
-            // Vertex clips -> triangle is clipped
-            if(tri.v[ver].clip == 1) {
-                skip = 1;
-                break;
-            }
-            
-            // Cull backfaces
-            if( imul(tri.v[1].p.x - tri.v[0].p.x, tri.v[2].p.y - tri.v[0].p.y) -
-                imul(tri.v[2].p.x - tri.v[0].p.x, tri.v[1].p.y - tri.v[0].p.y) < 0) {
-                skip = 1;
-                break;
-            }
-        }
-
-        // Clipped / culled
-        if(skip == 1) {
+        // Cull backfaces 
+        if(imul(tri.v[1].p.x - tri.v[0].p.x, tri.v[2].p.y - tri.v[0].p.y) -
+            imul(tri.v[2].p.x - tri.v[0].p.x, tri.v[1].p.y - tri.v[0].p.y) < 0) {
             continue;
         }
-        
-        // Set up tex coords
-        for(int ver = 0; ver < 3; ver++) {        
-            tri.v[ver].uw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].u;
-            tri.v[ver].vw = models[sorted_triangles[i].model_id].texcoords[sorted_triangles[i].v[ver + 4]].v;           
-        }
-        
-        // Shade (Hemi lighting, per face)
-        ivec3_t light_dir = ivec3norm(ivec3(FLOAT_FIXED(0.5), FLOAT_FIXED(1.0), FLOAT_FIXED(0.5)));
-        tri.shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[i].model_id].normals[sorted_triangles[i].v[3]], light_dir)));
-            
-        // Draw triangle
-        rasterize_triangle(framebuffer, &tri, sorted_triangles[i].texture);
+
+        clip_rasterize(framebuffer, models, i, tri);
     }
 }
