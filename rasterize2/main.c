@@ -94,7 +94,7 @@ void reshape(int w, int h) {
 }
 
 // Basic glut event loop
-#define MOVEINC 2.4f
+#define MOVEINC 0.4f
 void keyboard(unsigned char key, int x, int y) {
     switch(key) {
         case 'w':
@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
 #endif
 
     // Create model
-    models[0] = get_model_cityscape2();
+    models[0] = get_model_cityscape3();
     
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);

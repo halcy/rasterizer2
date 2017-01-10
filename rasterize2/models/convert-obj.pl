@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-my $scale = 1.0;
+my $scale = 2.0;
 my $offset = 0;
 my $name = "cityscape3";
 

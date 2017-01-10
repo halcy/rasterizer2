@@ -455,7 +455,7 @@ void draw_floor(uint8_t* framebuffer, imat4x4_t camera, imat4x4_t projection, ui
     // Figure out how far above the plane we are so we can clip agressively
     int harsh_clip = 1;
     ivec4_t pos = imat4x4transform(camera, ivec4(0, height, 0, INT_FIXED(1)));
-    if(iabs(pos.y) > INT_FIXED(10)) {
+    if(iabs(pos.y) > INT_FIXED(40)) {
         harsh_clip = 3;
     }
     
