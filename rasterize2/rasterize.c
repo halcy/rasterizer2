@@ -299,11 +299,16 @@ void prepare_geometry_storage(model_t* models, int32_t num_models) {
 
     // Copy face data
     int32_t face_offset = 0;
+    int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         memcpy(&sorted_triangles[face_offset], models[m].faces, sizeof(triangle_t) * models[m].num_faces);
         for(int i = face_offset; i < face_offset + models[m].num_faces; i++) {
             sorted_triangles[i].model_id = m;
+            for(int j = 0; j < 3; j++) {
+                sorted_triangles[i].v[j] += vert_offset;
+            }
         }
+        vert_offset +=  models[m].num_vertices;
         face_offset += models[m].num_faces;
     }
 }
@@ -372,13 +377,14 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
         }
     }
 
-    // All vertices clip or far plane clip
-    if(clip >= 3) {
+    // All vertices clip
+    if(clip + ((clip & 0xFF) << 8) >= 0x300) {
         return;
     }
+    clip = clip & 0xFF;
 
     // One vertex out -> quad, so copy tri 
-    if(clip == 1) {    
+    if(clip == 1) {
         ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_b].cp);
         if(transform_pos.w == 0) {
             return;
@@ -455,14 +461,14 @@ void draw_floor(uint8_t* framebuffer, imat4x4_t camera, imat4x4_t projection, ui
     // Figure out how far above the plane we are so we can clip agressively
     int harsh_clip = 1;
     ivec4_t pos = imat4x4transform(camera, ivec4(0, height, 0, INT_FIXED(1)));
-    if(iabs(pos.y) > INT_FIXED(40)) {
+    if(iabs(pos.y) > INT_FIXED(20)) {
         harsh_clip = 3;
     }
     
-    for(int x = -64; x <= 64; x++) {
-        for(int z = -64; z <= 64; z++) {
+    for(int x = -32; x <= 32; x++) {
+        for(int z = -32; z <= 32; z++) {
             // Skip if outside arena
-            if(x * x + z * z > 64 * 64) {
+            if(x * x + z * z > 32 * 32) {
                 continue;
             }
             
@@ -495,12 +501,22 @@ void draw_floor(uint8_t* framebuffer, imat4x4_t camera, imat4x4_t projection, ui
                     }
                 }
                 
+                // xy clip?
+                if(
+                    floor_tri.v[i].cp.x >= floor_tri.v[i].cp.w ||
+                    floor_tri.v[i].cp.y >= floor_tri.v[i].cp.w ||
+                    floor_tri.v[i].cp.x <= -floor_tri.v[i].cp.w ||
+                    floor_tri.v[i].cp.y <= -floor_tri.v[i].cp.w 
+                ) {
+                    floor_tri.v[i].clip = 0x100;
+                }
+
                 floor_tri.v[i].p = ivec3(
                     VIEWPORT(floor_tri.v[i].cp.x, floor_tri.v[i].cp.w, SCREEN_WIDTH),
                     VIEWPORT(floor_tri.v[i].cp.y, floor_tri.v[i].cp.w, SCREEN_HEIGHT),
                     floor_tri.v[i].cp.z
                 );
-                floor_tri.v[i].clip = 0;                
+                floor_tri.v[i].clip = 0;
             }
             
             // Pass to rasterizer
@@ -553,7 +569,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         // Mvp matrix from camera, mv and p
-        imat4x4_t mvp = imat4x4mul(models[m].modelview, camera);
+        imat4x4_t mvp = imat4x4mul(camera, models[m].modelview);
         mvp = imat4x4mul(projection, mvp);
 
         // Transform all vertices
@@ -574,6 +590,16 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
                 if(transform_vertex.p.z >= transform_vertex.p.w) {
                     transformed_vertices[i + vert_offset].clip = 3; // Far clip is THREE TIMES as bad as near clip
                     continue;
+                }
+
+                // xy clip?
+                if(
+                    transform_vertex.p.x >= transform_vertex.p.w ||
+                    transform_vertex.p.y >= transform_vertex.p.w ||
+                    transform_vertex.p.x <= -transform_vertex.p.w ||
+                    transform_vertex.p.y <= -transform_vertex.p.w 
+                ) {
+                    transformed_vertices[i + vert_offset].clip = 0x100;
                 }
 
                 // No clipping? Perspective divide and viewport transform
@@ -606,7 +632,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         ivec4_t dot;
         imat4x4_t mvp = imat4x4mul(projection, camera);
         for(int angle = 0; angle < INT_FIXED(1) - FLOAT_FIXED(0.0125 / 2.0); angle += FLOAT_FIXED(0.0125)) {
-            dot =  ivec4(isin(angle) << 9, INT_FIXED(i * 10), icos(angle) << 9, INT_FIXED(1));
+            dot =  ivec4(isin(angle) << 8, INT_FIXED(i * 10), icos(angle) << 8, INT_FIXED(1));
             dot = imat4x4transform(mvp, dot);
             
             // Near clip
@@ -623,6 +649,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     
     // Rasterize triangle-order
     transformed_triangle_t tri;
+
     for(int32_t i = 0; i < num_faces_total; i++ ) {
         // Set up triangle
         for(int ver = 0; ver < 3; ver++) {

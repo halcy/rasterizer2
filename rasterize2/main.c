@@ -29,7 +29,7 @@ int framecount;
 float starttime;
 
 // List of models and projection matrix
-#define NUM_MODELS 1
+#define NUM_MODELS 4
 model_t models[NUM_MODELS];
 imat4x4_t projection;
 uint8_t* textures[20];
@@ -73,8 +73,18 @@ void display(void) {
     imat4x4_t camera = imat4x4lookat(eye, lookat, up);
 
     // Draw model to screen buffer
-    rasterize(framebuffer, models, NUM_MODELS, camera, projection, textures[4]);
-    
+    rasterize(framebuffer, models, NUM_MODELS, camera, projection, textures[13]);
+
+    // Overlay
+    for(int y = 0; y < SCREEN_HEIGHT; y++) {
+        for(int x = 0; x < SCREEN_WIDTH; x++) {
+            uint8_t pixel = textures[14][x + y * SCREEN_WIDTH];
+            if(pixel != RGB332(0, 255, 0)) {
+                framebuffer[x + y * SCREEN_WIDTH] = pixel;
+            }
+        }
+    }
+
     // Buffer to screen
     glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
@@ -181,8 +191,17 @@ int main(int argc, char **argv) {
 #endif
 
     // Create model
-    models[0] = get_model_cityscape3();
-    
+    models[0] = get_model_tower();
+
+    models[1] = get_model_cityscape3();
+    models[1].modelview = imat4x4translate(ivec3(INT_FIXED(0), INT_FIXED(0), INT_FIXED(160)));
+
+    models[2] = get_model_cityscape3();
+    models[2].modelview = imat4x4translate(ivec3(INT_FIXED(138), INT_FIXED(0), INT_FIXED(-80)));
+
+    models[3] = get_model_cityscape3();
+    models[3].modelview = imat4x4translate(ivec3(INT_FIXED(-138), INT_FIXED(0), INT_FIXED(-80)));
+
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
 
@@ -193,14 +212,37 @@ int main(int argc, char **argv) {
     /or (int i = 1; i < 20; i++) {
         textures[i] = textures[0];
     }*/
-    textures[0] = load_texture("windows.bmp");
-    textures[1] = load_texture("roof_sharp.bmp");
-    textures[2] = load_texture("roof_flat.bmp");
-    textures[3] = load_texture("windows.bmp");
-    textures[4] = load_texture("floor.bmp");
-    
-    for (int i = 0; i < models[0].num_faces; i++) {
-        models[0].faces[i].texture = textures[models[0].faces[i].v[7]];
+
+    textures[0] = load_texture("tower.bmp");
+
+    textures[1] = load_texture("windows.bmp");
+    textures[2] = load_texture("roof_sharp.bmp");
+    textures[3] = load_texture("roof_flat.bmp");
+    textures[4] = load_texture("windows.bmp");
+
+    textures[5] = load_texture("windows.bmp");
+    textures[6] = load_texture("roof_sharp.bmp");
+    textures[7] = load_texture("roof_flat.bmp");
+    textures[8] = load_texture("windows.bmp");
+
+    textures[9] = load_texture("windows.bmp");
+    textures[10] = load_texture("roof_sharp.bmp");
+    textures[11] = load_texture("roof_flat.bmp");
+    textures[12] = load_texture("windows.bmp");
+
+    textures[13] = load_texture("floor.bmp");
+    textures[14] = load_texture("cockpit.bmp");
+
+    int tex_offset = 0;
+    int tex_max = 0;
+    for(int m = 0; m < NUM_MODELS; m++) {
+        for(int i = 0; i < models[m].num_faces; i++) {
+            tex_max = max(models[m].faces[i].v[7], tex_max);
+            models[m].faces[i].texture = textures[models[m].faces[i].v[7] + tex_offset];
+        }
+        printf("%d %d\n", m, tex_max);
+        tex_offset = tex_max + 2;
+        tex_max = 0;
     }
 
     // Set up storage required
@@ -210,13 +252,13 @@ int main(int argc, char **argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
     glutInitWindowSize(SCREEN_WIDTH * ZOOM_LEVEL, SCREEN_HEIGHT * ZOOM_LEVEL);
-    glutCreateWindow("rasterizer");
+    glutCreateWindow("CYBER DEFENSE 2200");
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
     glutPassiveMotionFunc(mouse);
     glutSetCursor(GLUT_CURSOR_NONE); 
-    //glutIdleFunc(display);
+    glutIdleFunc(display);
     
     // Run render loop
     starttime = nanotime();

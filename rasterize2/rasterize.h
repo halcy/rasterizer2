@@ -7,7 +7,7 @@
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
 #define ZNEAR FLOAT_FIXED(0.1)
-#define ZFAR FLOAT_FIXED(256.0)
+#define ZFAR FLOAT_FIXED(1024.0)
 
 // 0-255 R G B to packed RGB332
 #define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
@@ -29,7 +29,7 @@ typedef struct {
 } texcoord_t;
 
 typedef struct {
-    int16_t v[8]; // p0, p1, p2, n, t1, t2, t3, texid
+    int32_t v[8]; // p0, p1, p2, n, t1, t2, t3, texid
     uint8_t model_id;
     uint8_t* texture;
 } triangle_t;
@@ -44,7 +44,7 @@ typedef struct {
 typedef struct {
     ivec4_t cp;
     ivec3_t p;
-    uint8_t clip;
+    uint16_t clip;
     int32_t uw;
     int32_t vw;
 } transformed_vertex_t;

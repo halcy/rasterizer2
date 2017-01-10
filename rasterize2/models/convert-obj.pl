@@ -6,9 +6,9 @@
 use warnings;
 use strict;
 
-my $scale = 2.0;
+my $scale = 20.0;
 my $offset = 0;
-my $name = "cityscape3";
+my $name = "tower";
 
 my @vertices;
 my @texcoords;
