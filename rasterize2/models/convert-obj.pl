@@ -8,7 +8,7 @@ use strict;
 
 my $scale = 1.0;
 my $offset = 0;
-my $name = "livingroom";
+my $name = "cityscape3";
 
 my @vertices;
 my @texcoords;

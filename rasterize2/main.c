@@ -198,6 +198,7 @@ int main(int argc, char **argv) {
     textures[1] = load_texture("roof_sharp.bmp");
     textures[2] = load_texture("roof_flat.bmp");
     textures[3] = load_texture("windows.bmp");
+    textures[4] = load_texture("floor.bmp");
     
     for (int i = 0; i < models[0].num_faces; i++) {
         models[0].faces[i].texture = textures[models[0].faces[i].v[7]];

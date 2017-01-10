@@ -383,6 +383,10 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
     // One vertex out -> quad, so copy tri 
     if(clip == 1) {
         ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_b].cp);
+        if(transform_pos.w == 0) {
+            return;
+        }
+
         tri.v[clip_a].p = ivec3(
             VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
             VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
@@ -395,6 +399,10 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
         // Set up final triangle
         tri.v[clip_b] = tri.v[clip_c];
         transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
+        if(transform_pos.w == 0) {
+            return;
+        }
+
         tri.v[clip_c].p = ivec3(
             VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
             VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
@@ -406,6 +414,10 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
     if (clip == 2) {
         ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
         transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
+        if(transform_pos.w == 0) {
+            return;
+        }
+
         tri.v[clip_a].p = ivec3(
             VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
             VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
@@ -413,6 +425,10 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
         );
 
         transform_pos = clip_line(tri.v[clip_b].cp, tri.v[clip_c].cp);
+        if(transform_pos.w == 0) {
+            return;
+        }
+
         tri.v[clip_b].p = ivec3(
             VIEWPORT(transform_pos.x, transform_pos.w, SCREEN_WIDTH),
             VIEWPORT(transform_pos.y, transform_pos.w, SCREEN_HEIGHT),
@@ -480,11 +496,37 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     // Draw floor and sky
     int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
     horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
-    memset(&framebuffer[0], RGB332(1<<1, 1<<1, 1<<1), horizon_y * SCREEN_WIDTH);    
-    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 0x49, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
+    memset(&framebuffer[0], 0x55, horizon_y * SCREEN_WIDTH);
+
+    transformed_triangle_t floor_tri;
+    floor_tri.shade = INT_FIXED(1);
+    floor_tri.v[0].cp = imat4x4transform(camera, ivec4(INT_FIXED(0), 0, INT_FIXED(0), INT_FIXED(1)));
+    floor_tri.v[2].cp = imat4x4transform(camera, ivec4(INT_FIXED(1), 0, INT_FIXED(0), INT_FIXED(1)));
+    floor_tri.v[1].cp = imat4x4transform(camera, ivec4(INT_FIXED(0), 0, INT_FIXED(1), INT_FIXED(1)));
     
+    /*floor_tri.v[0].p = ivec3(
+        VIEWPORT(floor_tri.v[0].cp.x, floor_tri.v[0].cp.w, SCREEN_WIDTH),
+        VIEWPORT(floor_tri.v[0].cp.y, floor_tri.v[0].cp.w, SCREEN_HEIGHT),
+        floor_tri.v[0].cp.z
+    );
+
+    floor_tri.v[1].p = ivec3(
+        VIEWPORT(floor_tri.v[1].cp.x, floor_tri.v[1].cp.w, SCREEN_WIDTH),
+        VIEWPORT(floor_tri.v[1].cp.y, floor_tri.v[1].cp.w, SCREEN_HEIGHT),
+        floor_tri.v[1].cp.z
+    );
+
+    floor_tri.v[2].p = ivec3(
+        VIEWPORT(floor_tri.v[2].cp.x, floor_tri.v[2].cp.w, SCREEN_WIDTH),
+        VIEWPORT(floor_tri.v[2].cp.y, floor_tri.v[2].cp.w, SCREEN_HEIGHT),
+        floor_tri.v[2].cp.z
+    );*/
+    //rasterize_triangle(framebuffer, &floor_tri, sorted_triangles[100].texture);
+    
+    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 0x231, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
+
     // Rasterize triangle-order
-    transformed_triangle_t tri;
+    /*transformed_triangle_t tri;
     for(int32_t i = 0; i < num_faces_total; i++ ) {
         // Set up triangle
         for(int ver = 0; ver < 3; ver++) {
@@ -498,5 +540,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         }
 
         clip_rasterize(framebuffer, models, i, tri);
-    }
+    }*/
+
+    clip_rasterize(framebuffer, models, 555, floor_tri);
 }
