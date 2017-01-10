@@ -32,7 +32,8 @@ float starttime;
 #define NUM_MODELS 1
 model_t models[NUM_MODELS];
 imat4x4_t projection;
-
+uint8_t* textures[20];
+    
 // Time in seconds to nanosecond accuracy. Too lazy to do it right on win32
 #ifdef _WIN32
 float qpcFreq = 0.0;
@@ -72,7 +73,7 @@ void display(void) {
     imat4x4_t camera = imat4x4lookat(eye, lookat, up);
 
     // Draw model to screen buffer
-    rasterize(framebuffer, models, NUM_MODELS, camera, projection);
+    rasterize(framebuffer, models, NUM_MODELS, camera, projection, textures[4]);
     
     // Buffer to screen
     glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
@@ -93,7 +94,7 @@ void reshape(int w, int h) {
 }
 
 // Basic glut event loop
-#define MOVEINC 0.1f
+#define MOVEINC 2.4f
 void keyboard(unsigned char key, int x, int y) {
     switch(key) {
         case 'w':
@@ -188,8 +189,6 @@ int main(int argc, char **argv) {
     // Screen buffer
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
 
-    // Textures
-    uint8_t* textures[20];
     /*textures[0] = load_texture("baked.bmp");
     /or (int i = 1; i < 20; i++) {
         textures[i] = textures[0];

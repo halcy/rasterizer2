@@ -273,9 +273,7 @@ static int triClosestDepthCompare(const void *p1, const void *p2) {
         ),
         transformed_vertices[t2->v[2]].p.z
     );
-    return(
-        d1 - d2
-    );
+    return(d1 - d2);
 }
 
 // Set up storage for geometry and copy face data
@@ -328,24 +326,22 @@ ivec4_t clip_line(ivec4_t a, ivec4_t b) {
     return a;
 }
 
-// Draw a single triangle to the screen afte transformation and clipping
-void draw_textured(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t tri) {
+// Set up shading information for a normal textured shaded triangle
+// from model info and index
+void set_shading(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t* tri) {
     // Set up tex coords
     for(int ver = 0; ver < 3; ver++) {        
-        tri.v[ver].uw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].u;
-        tri.v[ver].vw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].v;           
+        tri->v[ver].uw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].u;
+        tri->v[ver].vw = models[sorted_triangles[tri_idx].model_id].texcoords[sorted_triangles[tri_idx].v[ver + 4]].v;           
     }
 
     // Shade (Hemi lighting, per face)
     ivec3_t light_dir = ivec3norm(ivec3(FLOAT_FIXED(0.5), FLOAT_FIXED(1.0), FLOAT_FIXED(0.5)));
-    tri.shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[tri_idx].model_id].normals[sorted_triangles[tri_idx].v[3]], light_dir)));
-
-    // Draw triangle
-    rasterize_triangle(framebuffer, &tri, sorted_triangles[tri_idx].texture);
+    tri->shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[tri_idx].model_id].normals[sorted_triangles[tri_idx].v[3]], light_dir)));
 }
 
 // Draw a single triangle, view clipping against near/far if need be
-void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t tri) {
+void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transformed_triangle_t tri, uint8_t* texture_override) {
     // Check what needs clipping
     uint32_t clip = 0;
 
@@ -355,9 +351,10 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
     int clip_c = -1;
 
     for(int ver = 0; ver < 3; ver++) {
+        clip += tri.v[ver].clip;
+        
         // Vertex clips
         if(tri.v[ver].clip == 1) {
-            clip += 1;
             if(clip_a == -1) {
                 clip_a = ver;
             }
@@ -381,7 +378,7 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
     }
 
     // One vertex out -> quad, so copy tri 
-    if(clip == 1) {
+    if(clip == 1) {    
         ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_b].cp);
         if(transform_pos.w == 0) {
             return;
@@ -394,7 +391,13 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
         );
 
         // Additional draw for the bonus triangle
-        draw_textured(framebuffer, models, tri_idx, tri);
+        if(texture_override == 0) {
+            set_shading(framebuffer, models, tri_idx, &tri);
+            rasterize_triangle(framebuffer, &tri, sorted_triangles[tri_idx].texture); 
+        }
+        else {
+            rasterize_triangle(framebuffer, &tri, texture_override); 
+        }
         
         // Set up final triangle
         tri.v[clip_b] = tri.v[clip_c];
@@ -411,7 +414,7 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
     }
 
     // Two vertices out -> tri again
-    if (clip == 2) {
+    if (clip == 2) {   
         ivec4_t transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
         transform_pos = clip_line(tri.v[clip_a].cp, tri.v[clip_c].cp);
         if(transform_pos.w == 0) {
@@ -436,11 +439,117 @@ void clip_rasterize(uint8_t* framebuffer, model_t* models, int32_t tri_idx, tran
         );
     }
 
-    draw_textured(framebuffer, models, tri_idx, tri);
+    if(texture_override == 0) {
+        set_shading(framebuffer, models, tri_idx, &tri);
+        rasterize_triangle(framebuffer, &tri, sorted_triangles[tri_idx].texture);
+    }
+    else {
+        rasterize_triangle(framebuffer, &tri, texture_override); 
+    }
+}
+
+// Draw a xz-plane
+void draw_floor(uint8_t* framebuffer, imat4x4_t camera, imat4x4_t projection, uint8_t* texture, int32_t height) {
+    imat4x4_t mvp = imat4x4mul(projection, camera);
+
+    // Figure out how far above the plane we are so we can clip agressively
+    int harsh_clip = 1;
+    ivec4_t pos = imat4x4transform(camera, ivec4(0, height, 0, INT_FIXED(1)));
+    if(iabs(pos.y) > INT_FIXED(10)) {
+        harsh_clip = 3;
+    }
+    
+    for(int x = -64; x <= 64; x++) {
+        for(int z = -64; z <= 64; z++) {
+            // Skip if outside arena
+            if(x * x + z * z > 64 * 64) {
+                continue;
+            }
+            
+            // Floor triangle 1
+            transformed_triangle_t floor_tri;
+            floor_tri.shade = INT_FIXED(1);
+            floor_tri.v[0].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * x),       height, INT_FIXED(8 * z),       INT_FIXED(1)));
+            floor_tri.v[2].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * (x + 1)), height, INT_FIXED(8 * z),       INT_FIXED(1)));
+            floor_tri.v[1].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * x),       height, INT_FIXED(8 * (z + 1)), INT_FIXED(1)));
+            
+            floor_tri.v[0].uw = INT_FIXED(0);
+            floor_tri.v[0].vw = INT_FIXED(0);
+            
+            floor_tri.v[1].uw = INT_FIXED(1);
+            floor_tri.v[1].vw = INT_FIXED(0);
+            
+            floor_tri.v[2].uw = INT_FIXED(0);
+            floor_tri.v[2].vw = INT_FIXED(1);
+            
+            // Clip?
+            for(int i = 0; i < 3; i++) {
+                if(floor_tri.v[i].cp.z <= 0) {
+                    floor_tri.v[i].clip = harsh_clip;
+                    continue;
+                }
+                else {
+                    if(floor_tri.v[i].cp.z >= floor_tri.v[i].cp.w) {
+                        floor_tri.v[i].clip = 3;
+                        continue;
+                    }
+                }
+                
+                floor_tri.v[i].p = ivec3(
+                    VIEWPORT(floor_tri.v[i].cp.x, floor_tri.v[i].cp.w, SCREEN_WIDTH),
+                    VIEWPORT(floor_tri.v[i].cp.y, floor_tri.v[i].cp.w, SCREEN_HEIGHT),
+                    floor_tri.v[i].cp.z
+                );
+                floor_tri.v[i].clip = 0;                
+            }
+            
+            // Pass to rasterizer
+            clip_rasterize(framebuffer, 0, 0, floor_tri, texture);
+            
+             // Floor triangle 2
+            floor_tri.shade = INT_FIXED(1);
+            floor_tri.v[0].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * (x + 1)), height, INT_FIXED(8 * (z + 1)), INT_FIXED(1)));
+            floor_tri.v[2].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * (x + 1)), height, INT_FIXED(8 * z),       INT_FIXED(1)));
+            floor_tri.v[1].cp = imat4x4transform(mvp, ivec4(INT_FIXED(8 * x),       height, INT_FIXED(8 * (z + 1)), INT_FIXED(1)));
+            
+            floor_tri.v[0].uw = INT_FIXED(1);
+            floor_tri.v[0].vw = INT_FIXED(1);
+            
+            floor_tri.v[1].uw = INT_FIXED(1);
+            floor_tri.v[1].vw = INT_FIXED(0);
+            
+            floor_tri.v[2].uw = INT_FIXED(0);
+            floor_tri.v[2].vw = INT_FIXED(1);
+            
+            // Clip?
+            for(int i = 0; i < 3; i++) {
+                if(floor_tri.v[i].cp.z <= 0) {
+                    floor_tri.v[i].clip = harsh_clip;
+                    continue;
+                }
+                else {
+                    if(floor_tri.v[i].cp.z >= floor_tri.v[i].cp.w) {
+                        floor_tri.v[i].clip = 3;
+                        continue;
+                    }
+                }
+                
+                floor_tri.v[i].p = ivec3(
+                    VIEWPORT(floor_tri.v[i].cp.x, floor_tri.v[i].cp.w, SCREEN_WIDTH),
+                    VIEWPORT(floor_tri.v[i].cp.y, floor_tri.v[i].cp.w, SCREEN_HEIGHT),
+                    floor_tri.v[i].cp.z
+                );
+                floor_tri.v[i].clip = 0;                
+            }
+            
+            // Pass to rasterizer
+            clip_rasterize(framebuffer, 0, 0, floor_tri, texture);
+        }
+    }
 }
 
 // Actual model rasterizer. Prepare model storage before rendering (whenever scene changes)
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection) {
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection, uint8_t* floor_tex) {
     int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         // Mvp matrix from camera, mv and p
@@ -482,57 +591,36 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     // Depth sort
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
     
-    // Figure out horizon height
-    ivec4_t horizon;
-    ivec4_t best_horizon = ivec4(0, 0, 0, 0);
-    for(int angle = 0; angle < INT_FIXED(1); angle += FLOAT_FIXED(0.05)) {
-        horizon = imat4x4transform(camera, ivec4(isin(angle) << 7, 0, icos(angle) << 7, INT_FIXED(0)));
-        if(iabs(horizon.z) > iabs(best_horizon.z)) {
-            best_horizon = horizon;
+    // Clear screen
+    memset(framebuffer, RGB332(36, 0, 85), SCREEN_HEIGHT * SCREEN_WIDTH);
+    
+    // Floor / ceiling
+    if(floor_tex != 0) {
+        draw_floor(framebuffer, camera, projection, floor_tex, INT_FIXED(0));
+        draw_floor(framebuffer, camera, projection, floor_tex, INT_FIXED(200));
+    }
+    
+    
+    // Draw sky
+    for(int i = 0; i < 20; i++) {
+        ivec4_t dot;
+        imat4x4_t mvp = imat4x4mul(projection, camera);
+        for(int angle = 0; angle < INT_FIXED(1) - FLOAT_FIXED(0.0125 / 2.0); angle += FLOAT_FIXED(0.0125)) {
+            dot =  ivec4(isin(angle) << 9, INT_FIXED(i * 10), icos(angle) << 9, INT_FIXED(1));
+            dot = imat4x4transform(mvp, dot);
+            
+            // Near clip
+            if(dot.z > 0) {
+                int32_t dot_x = FIXED_INT_ROUND(VIEWPORT(dot.x, dot.w, SCREEN_WIDTH));
+                int32_t dot_y = FIXED_INT_ROUND(VIEWPORT(dot.y, dot.w, SCREEN_HEIGHT));
+                
+                if(dot_x >= 0 && dot_x < SCREEN_WIDTH && dot_y >= 0 && dot_y < SCREEN_HEIGHT) {
+                    framebuffer[dot_x + dot_y * SCREEN_WIDTH] = 0xFF;
+                }
+            }
         }
     }
-    horizon = imat4x4transform(projection, best_horizon);
-
-    // Draw floor and sky
-    int32_t horizon_y = FIXED_INT(VIEWPORT(horizon.y, horizon.w, SCREEN_HEIGHT));
-    horizon_y = imin(imax(0, horizon_y), SCREEN_HEIGHT - 1);
-    //memset(&framebuffer[0], 0x55, horizon_y * SCREEN_WIDTH);
-
-    imat4x4_t mvp = imat4x4mul(projection, camera);
-
-    transformed_triangle_t floor_tri;
-    floor_tri.shade = INT_FIXED(1);
-    floor_tri.v[0].cp = imat4x4transform(mvp, ivec4(INT_FIXED(0), 0, INT_FIXED(0), INT_FIXED(1)));
-    floor_tri.v[2].cp = imat4x4transform(mvp, ivec4(INT_FIXED(5), 0, INT_FIXED(0), INT_FIXED(1)));
-    floor_tri.v[1].cp = imat4x4transform(mvp, ivec4(INT_FIXED(0), 0, INT_FIXED(5), INT_FIXED(1)));
     
-    floor_tri.v[0].p = ivec3(
-        VIEWPORT(floor_tri.v[0].cp.x, floor_tri.v[0].cp.w, SCREEN_WIDTH),
-        VIEWPORT(floor_tri.v[0].cp.y, floor_tri.v[0].cp.w, SCREEN_HEIGHT),
-        floor_tri.v[0].cp.z
-    );
-
-    floor_tri.v[1].p = ivec3(
-        VIEWPORT(floor_tri.v[1].cp.x, floor_tri.v[1].cp.w, SCREEN_WIDTH),
-        VIEWPORT(floor_tri.v[1].cp.y, floor_tri.v[1].cp.w, SCREEN_HEIGHT),
-        floor_tri.v[1].cp.z
-    );
-
-    floor_tri.v[2].p = ivec3(
-        VIEWPORT(floor_tri.v[2].cp.x, floor_tri.v[2].cp.w, SCREEN_WIDTH),
-        VIEWPORT(floor_tri.v[2].cp.y, floor_tri.v[2].cp.w, SCREEN_HEIGHT),
-        floor_tri.v[2].cp.z
-    );
-
-    floor_tri.v[0].clip = 0;
-    floor_tri.v[1].clip = 0;
-    floor_tri.v[2].clip = 0;
-
-    //rasterize_triangle(framebuffer, &floor_tri, sorted_triangles[100].texture);
-    
-    memset(&framebuffer[horizon_y * SCREEN_WIDTH], 0x231, (SCREEN_HEIGHT - horizon_y) * SCREEN_WIDTH);
-    clip_rasterize(framebuffer, models, 555, floor_tri);
-
     // Rasterize triangle-order
     transformed_triangle_t tri;
     for(int32_t i = 0; i < num_faces_total; i++ ) {
@@ -547,6 +635,27 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
             continue;
         }
 
-        clip_rasterize(framebuffer, models, i, tri);
+        clip_rasterize(framebuffer, models, i, tri, 0);
     }
+    
+    /*
+    int r = 0;
+    int g = 0;
+    int b = 0;
+    for(int y = 0; y < 16; y++) {
+        for(int x = 0; x < 16; x++) {
+            framebuffer[x + y * SCREEN_WIDTH] = (r << 5) | (g << 2) | b;
+            
+            r += 1;
+            if(r == 0x8) {
+                r = 0;
+                g++;
+            }
+            
+            if(g == 0x8) {
+                g = 0;
+                b++;
+            }
+        }
+    }*/
 }

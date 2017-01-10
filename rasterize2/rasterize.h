@@ -7,7 +7,7 @@
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
 #define ZNEAR FLOAT_FIXED(0.1)
-#define ZFAR FLOAT_FIXED(200.0)
+#define ZFAR FLOAT_FIXED(4000.0)
 
 // 0-255 R G B to packed RGB332
 #define RGB332(r, g, b) ((((r) >> 5) & 0x07) << 5 | (((g) >> 5 ) & 0x07) << 2 | (((b) >> 6) & 0x03))
@@ -74,6 +74,6 @@ typedef struct {
 // Actual model drawer
 void prepare_geometry_storage(model_t* models, int32_t num_models);
 void free_geometry_storage();
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection);
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection, uint8_t* floor_tex);
 
 #endif
