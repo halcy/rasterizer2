@@ -20,6 +20,10 @@
 #define TEX_SCALE(x) ((x) >> (12 - TEX_SIZE_LOG2))
 #define TEX_TRANSFORM(u, v) (((TEX_SCALE(v) & (TEX_SIZE - 1)) << TEX_SIZE_LOG2) + (TEX_SCALE(u) & (TEX_SIZE - 1)))
 
+// Viewport transform
+#define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
+#define VIEWPORT_NO_PERSPECTIVE(x, s) (imul((x) + INT_FIXED(1), INT_FIXED((s) / 2)))
+
 // Vertex / Triangle as stored by model (per-face normals)
 typedef ivec3_t vertex_t;
 

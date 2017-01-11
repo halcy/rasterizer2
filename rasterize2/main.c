@@ -65,7 +65,7 @@ float nanotime() {
 
 // Moeller-Trumbore ray triangle intersection, using fixed point vector math
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
-float rayTriangleIntersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ivec3_t v2, int32_t* t) {
+int32_t ray_tri_intersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ivec3_t v2, int32_t* t) {
     ivec3_t v0v1 = ivec3sub(v1, v0);
     ivec3_t v0v2 = ivec3sub(v2, v0);
     ivec3_t pvec = ivec3cross(dir, v0v2);
@@ -167,7 +167,7 @@ void display(void) {
     else {
         speed -= 0.03 * inpscale;
     }
-    speed = speed < 1.0 ? 1.0 : speed;
+    speed = speed < 0.0 ? 0.0 : speed;
     speed = speed > 5.0 ? 5.0 : speed;
     
     // Recalculate projection
@@ -210,7 +210,48 @@ void display(void) {
 
     // Are we colliding?
     if(best_dot < FLOAT_FIXED(1.5)) {
-        framebuffer[0] = 0xF0; // TODO consequences
+        //framebuffer[0] = 0xF0; // TODO consequences
+    }
+    
+    // Ray test
+    int32_t t = 0;
+    int32_t best_t = INT_FIXED(2000);
+    ivec3_t dir_local = ivec3norm(ivec3sub(lookat, eye));
+    int hit = 0;
+    for(int m = 0; m < NUM_MODELS; m++) {
+        ivec4_t pos_transformed = imat4x4transform(
+            imat4x4affineinverse(models[m].modelview), 
+            ivec4(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos), INT_FIXED(1))
+        );
+        ivec3_t pos = ivec3(pos_transformed.x, pos_transformed.y, pos_transformed.z);
+        
+        ivec4_t dir_transformed = imat4x4transform(
+            imat4x4affineinverse(models[m].modelview), 
+            ivec4(dir_local.x, dir_local.y, dir_local.z, INT_FIXED(0))
+        );
+        ivec3_t dir = ivec3norm(ivec3(dir_transformed.x, dir_transformed.y, dir_transformed.z));
+        
+        for(int i = 0; i < models[m].num_faces; i++) {
+            ivec3_t v0 = models[m].vertices[models[m].faces[i].v[0]];
+            ivec3_t v1 = models[m].vertices[models[m].faces[i].v[1]];
+            ivec3_t v2 = models[m].vertices[models[m].faces[i].v[2]];
+            if(ray_tri_intersect(pos, dir, v0, v1, v2, &t) != 0) {
+                if(t > 0) {
+                    best_t = min(t, best_t);
+                    hit = 1;
+                }
+            }
+        }
+    }
+    
+    if(hit == 1) {
+        imat4x4_t mvp = imat4x4mul(projection, camera);
+        ivec4_t hitpos = ivec4(FLOAT_FIXED(xpos) + imul(t, dir_local.x), FLOAT_FIXED(ypos) + imul(t, dir_local.y), FLOAT_FIXED(zpos) + imul(t, dir_local.z), INT_FIXED(1));
+        hitpos = imat4x4transform(mvp, hitpos);
+        int32_t px = FIXED_INT_ROUND(VIEWPORT(hitpos.x, hitpos.w, SCREEN_WIDTH));
+        int32_t py = FIXED_INT_ROUND(VIEWPORT(hitpos.y, hitpos.w, SCREEN_HEIGHT));
+        framebuffer[px + SCREEN_WIDTH * py] = 0xF0; // TODO consequences
+        
     }
     
     // Overlay

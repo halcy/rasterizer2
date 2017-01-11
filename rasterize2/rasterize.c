@@ -7,10 +7,6 @@
 
 #include "rasterize.h"
 
-// Viewport transform
-#define VIEWPORT(x, w, s) (imul(idiv((x), (w)) + INT_FIXED(1), INT_FIXED((s) / 2)))
-#define VIEWPORT_NO_PERSPECTIVE(x, s) (imul((x) + INT_FIXED(1), INT_FIXED((s) / 2)))
-
 #define RGBCOMPSCALE(col, shift, mask, s) ((FIXED_INT_ROUND(imul(INT_FIXED(((col) >> (shift)) & (mask)), (s)))) << (shift))
 #define RGB322SCALE(col, s) (RGBCOMPSCALE(col, 5, 0x07, s) + RGBCOMPSCALE(col, 2, 0x07, s) + RGBCOMPSCALE(col, 0, 0x03, s))
 //#define RGB322SCALE(col, s) (col)
