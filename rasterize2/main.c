@@ -23,10 +23,14 @@
 #include "models.h"
 #include "bmp_handler.h"
 
+// Keyboard state
+int keys[256];
+
 // Frame buffer, frame counter, rendering start time
 uint8_t* framebuffer;
 int framecount;
 float starttime;
+float lasttime;
 
 // List of models and projection matrix
 #define NUM_MODELS 4
@@ -57,18 +61,76 @@ float nanotime() {
 #endif
 
 // Glut display function.
-float xpos = 1;
-float ypos = 0;
-float zpos = 1;
+float xpos = 10;
+float ypos = 10;
+float zpos = 10;
+
 float anglex = 0;
 float angley = 0;
-void display(void) {
-    // Update modelview matrices
-    int32_t time_val = FLOAT_FIXED(sin(nanotime() * 0.1f) * 0.3f);
 
+float xpower = 0;
+float ypower = 0;
+void display(void) {
+    // Input handling
+    if(keys['s']) {
+       ypower += 0.02 / 100.0;
+    } 
+    else if(keys['w']) {
+        ypower -= 0.02 / 100.0;
+    }
+    else {
+        if (ypower < 0) {
+            ypower += 0.02 / 50.0;
+        }
+
+        if (ypower > 0) {
+            ypower -= 0.02 / 50.0;
+        }
+    }
+
+    if(keys['a']) {
+        xpower += 0.02 / 150.0;
+    } 
+    else if(keys['d']) {
+        xpower -= 0.02 / 150.0;
+    }
+    else {
+        if (xpower < 0) {
+            xpower += 0.02 / 150.0;
+        }
+
+        if (xpower > 0) {
+            xpower -= 0.02 / 150.0;
+        }
+    }
+
+    xpower = xpower > 0.01 ? 0.01 : xpower;
+    xpower = xpower < -0.01 ? -0.01 : xpower;
+
+    ypower = ypower > 0.04 ? 0.04 : ypower;
+    ypower = ypower < -0.04 ? -0.04 : ypower;
+
+    anglex += xpower;
+    angley += ypower;
+
+    angley = angley > 1.0 ? 1.0 : angley;
+    angley = angley < -1.0 ? -1.0 : angley;
+
+    // TODO y problems
+
+    // Movement
+    float thistime = nanotime();
+    float elapsed = thistime - lasttime;
+    lasttime = thistime;
+
+    xpos += sin(anglex) * elapsed * 5.0;
+    zpos += cos(anglex) * elapsed * 5.0;
+    ypos += angley * elapsed * 5.0;
+
+    // Update modelview matrices
     ivec3_t eye = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos + 1.0), FLOAT_FIXED(zpos));
     ivec3_t lookat = ivec3(FLOAT_FIXED(xpos + sin(anglex)), FLOAT_FIXED(ypos + 1.0 + angley), FLOAT_FIXED(zpos + cos(anglex)));
-    ivec3_t up =  ivec3(FLOAT_FIXED(0), FLOAT_FIXED(1), FLOAT_FIXED(0));
+    ivec3_t up =  ivec3(FLOAT_FIXED(xpower * 70.0 * cos(anglex)), FLOAT_FIXED(1), FLOAT_FIXED(-xpower * 70.0 * sin(anglex)));
     
     imat4x4_t camera = imat4x4lookat(eye, lookat, up);
 
@@ -106,7 +168,8 @@ void reshape(int w, int h) {
 // Basic glut event loop
 #define MOVEINC 0.4f
 void keyboard(unsigned char key, int x, int y) {
-    switch(key) {
+    keys[key] = 1;
+    /*switch(key) {
         case 'w':
             xpos += MOVEINC * sin(anglex);
             zpos += MOVEINC * cos(anglex);
@@ -142,8 +205,22 @@ void keyboard(unsigned char key, int x, int y) {
         default:
         break;
     }
-    glutPostRedisplay();
+    glutPostRedisplay();*/
+
+    switch(key) {
+    case 27:
+        exit(0);
+        break;
+
+    default:
+        break;
+    }
 }
+
+void keyboardup(unsigned char key, int x, int y) {
+    keys[key] = 0;
+}
+
 #define SENS 0.001f
 void mouse(int x, int y) {
     int xc = SCREEN_WIDTH * ZOOM_LEVEL / 2;
@@ -253,15 +330,17 @@ int main(int argc, char **argv) {
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
     glutInitWindowSize(SCREEN_WIDTH * ZOOM_LEVEL, SCREEN_HEIGHT * ZOOM_LEVEL);
     glutCreateWindow("CYBER DEFENSE 2200");
-    glutDisplayFunc(display);
     glutReshapeFunc(reshape);
+    glutIgnoreKeyRepeat (1);
     glutKeyboardFunc(keyboard);
-    glutPassiveMotionFunc(mouse);
+    glutKeyboardUpFunc(keyboardup);
+    //glutPassiveMotionFunc(mouse);
     glutSetCursor(GLUT_CURSOR_NONE); 
     glutIdleFunc(display);
     
     // Run render loop
     starttime = nanotime();
+    lasttime = starttime;
     glutMainLoop();
 
 return 0;
