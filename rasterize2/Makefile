@@ -20,10 +20,11 @@ CFLAGS= \
 	-funsafe-loop-optimizations \
 	-funroll-all-loops \
 	-masm=intel -m3dnow -mtune=core2
-
+	
 LIBS=-lm
 OBJECTS=cityscape2.o \
 	cityscape3.o \
+	tower.o \
 	livingroom.o \
 	rasterize.o \
 	fixedmath.o \

@@ -12,6 +12,9 @@
 #include "glext.h"
 #endif
 
+#define max(a, b) ((a)>(b)?(a):(b))
+#define min(a, b) ((a)<(b)?(a):(b))
+
 #define ZOOM_LEVEL 4
 
 #include <stdio.h>
@@ -60,6 +63,35 @@ float nanotime() {
 }
 #endif
 
+// Moeller-Trumbore ray triangle intersection, using fixed point vector math
+// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
+float rayTriangleIntersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ivec3_t v2, int32_t* t) {
+    ivec3_t v0v1 = ivec3sub(v1, v0);
+    ivec3_t v0v2 = ivec3sub(v2, v0);
+    ivec3_t pvec = ivec3cross(dir, v0v2);
+    
+    int32_t det = ivec3dot(v0v1, pvec);
+
+    if(iabs(det) < FLOAT_FIXED(0.001)) {
+        return 0;
+    }
+
+    ivec3_t tvec = ivec3sub(orig, v0);
+    int32_t u = idiv(ivec3dot(tvec, pvec), det);
+    if(u < 0 || u > INT_FIXED(1)) {
+        return 0;
+    }
+    
+    ivec3_t qvec = ivec3cross(tvec, v0v1);
+    int32_t v = idiv(ivec3dot(dir, qvec), det);
+    if(v < 0 || u + v > INT_FIXED(1)) {
+        return 0;
+    }
+
+    *t = idiv(ivec3dot(v0v2, qvec), det);
+    return 1;
+} 
+
 // Glut display function.
 float xpos = 10;
 float ypos = 10;
@@ -70,73 +102,117 @@ float angley = 0;
 
 float xpower = 0;
 float ypower = 0;
+float speed = 1.0;
+
 void display(void) {
-    // Input handling
-    if(keys['s']) {
-       ypower += 0.02 / 100.0;
-    } 
-    else if(keys['w']) {
-        ypower -= 0.02 / 100.0;
-    }
-    else {
-        if (ypower < 0) {
-            ypower += 0.02 / 50.0;
-        }
-
-        if (ypower > 0) {
-            ypower -= 0.02 / 50.0;
-        }
-    }
-
-    if(keys['a']) {
-        xpower += 0.02 / 150.0;
-    } 
-    else if(keys['d']) {
-        xpower -= 0.02 / 150.0;
-    }
-    else {
-        if (xpower < 0) {
-            xpower += 0.02 / 150.0;
-        }
-
-        if (xpower > 0) {
-            xpower -= 0.02 / 150.0;
-        }
-    }
-
-    xpower = xpower > 0.01 ? 0.01 : xpower;
-    xpower = xpower < -0.01 ? -0.01 : xpower;
-
-    ypower = ypower > 0.04 ? 0.04 : ypower;
-    ypower = ypower < -0.04 ? -0.04 : ypower;
-
-    anglex += xpower;
-    angley += ypower;
-
-    angley = angley > 1.0 ? 1.0 : angley;
-    angley = angley < -1.0 ? -1.0 : angley;
-
-    // TODO y problems
-
-    // Movement
+    // Timing
     float thistime = nanotime();
     float elapsed = thistime - lasttime;
     lasttime = thistime;
 
-    xpos += sin(anglex) * elapsed * 5.0;
-    zpos += cos(anglex) * elapsed * 5.0;
-    ypos += angley * elapsed * 5.0;
+    
+    // Input handling
+    float inpscale = elapsed * 100.0;
+    if(keys['s']) {
+       ypower += inpscale * 0.02 / 100.0;
+    } 
+    else if(keys['w']) {
+        ypower -= inpscale * 0.02 / 100.0;
+    }
+    else {
+        if (ypower < 0) {
+            ypower += inpscale * 0.02 / 50.0;
+        }
 
-    // Update modelview matrices
-    ivec3_t eye = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos + 1.0), FLOAT_FIXED(zpos));
-    ivec3_t lookat = ivec3(FLOAT_FIXED(xpos + sin(anglex)), FLOAT_FIXED(ypos + 1.0 + angley), FLOAT_FIXED(zpos + cos(anglex)));
+        if (ypower > 0) {
+            ypower -= inpscale * 0.02 / 50.0;
+        }
+    }
+
+    if(keys['a']) {
+        xpower += inpscale * 0.02 / 150.0;
+    } 
+    else if(keys['d']) {
+        xpower -= inpscale * 0.02 / 150.0;
+    }
+    else {
+        if (xpower < 0) {
+            xpower += inpscale * 0.02 / 150.0;
+        }
+
+        if (xpower > 0) {
+            xpower -= inpscale * 0.02 / 150.0;
+        }
+    }
+    
+    xpower = xpower > 0.01 ? 0.01 : xpower;
+    xpower = xpower < -0.01 ? -0.01 : xpower;
+
+    ypower = ypower > 0.01 ? 0.01 : ypower;
+    ypower = ypower < -0.01 ? -0.01 : ypower;
+    
+    anglex += inpscale * xpower;
+    angley += inpscale * ypower;
+
+    angley = angley > 1.0 ? 1.0 : angley;
+    angley = angley < -1.0 ? -1.0 : angley;
+
+    if(angley == 1.0 || angley == -1.0) {
+        ypower = 0.0;
+    }
+    
+    if(keys[' ']) {
+        speed += 0.03 * inpscale;
+    }
+    else {
+        speed -= 0.03 * inpscale;
+    }
+    speed = speed < 1.0 ? 1.0 : speed;
+    speed = speed > 5.0 ? 5.0 : speed;
+    
+    // Recalculate projection
+    projection = imat4x4perspective(FLOAT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
+    
+    // Movement
+    xpos += speed * sin(anglex) * elapsed * 5.0;
+    zpos += speed * cos(anglex) * elapsed * 5.0;
+    ypos += speed * angley * elapsed * 5.0;
+
+    // Update camera matrix
+    ivec3_t eye = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos));
+    ivec3_t lookat = ivec3(FLOAT_FIXED(xpos + sin(anglex)), FLOAT_FIXED(ypos + angley), FLOAT_FIXED(zpos + cos(anglex)));
     ivec3_t up =  ivec3(FLOAT_FIXED(xpower * 70.0 * cos(anglex)), FLOAT_FIXED(1), FLOAT_FIXED(-xpower * 70.0 * sin(anglex)));
     
     imat4x4_t camera = imat4x4lookat(eye, lookat, up);
 
-    // Draw model to screen buffer
+    // Draw models to screen buffer
     rasterize(framebuffer, models, NUM_MODELS, camera, projection, textures[13]);
 
+    // Collide ship
+    int32_t best_dot = INT_FIXED(2000);
+    for(int m = 0; m < NUM_MODELS; m++) {
+        // Inverse translate position
+        ivec4_t pos_transformed = imat4x4transform(
+            imat4x4affineinverse(models[m].modelview), 
+            ivec4(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos), INT_FIXED(1))
+        );
+        
+        // AABB collide position and vertices
+        ivec3_t pos = ivec3(pos_transformed.x, pos_transformed.y, pos_transformed.z);
+        for(int i = 0; i < models[m].num_vertices; i++) {
+            ivec3_t diff = ivec3sub(pos, models[m].vertices[i]);
+            int32_t dot = iabs(diff.x);
+            dot = max(dot, iabs(diff.y));
+            dot = max(dot, iabs(diff.z));
+            best_dot = min(dot, best_dot);
+        }
+    }
+
+    // Are we colliding?
+    if(best_dot < FLOAT_FIXED(1.5)) {
+        framebuffer[0] = 0xF0; // TODO consequences
+    }
+    
     // Overlay
     for(int y = 0; y < SCREEN_HEIGHT; y++) {
         for(int x = 0; x < SCREEN_WIDTH; x++) {
@@ -317,7 +393,6 @@ int main(int argc, char **argv) {
             tex_max = max(models[m].faces[i].v[7], tex_max);
             models[m].faces[i].texture = textures[models[m].faces[i].v[7] + tex_offset];
         }
-        printf("%d %d\n", m, tex_max);
         tex_offset = tex_max + 2;
         tex_max = 0;
     }

@@ -666,6 +666,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     }
     
     /*
+    // Draw a little RGB332 swatch
     int r = 0;
     int g = 0;
     int b = 0;
@@ -686,3 +687,5 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
         }
     }*/
 }
+
+
