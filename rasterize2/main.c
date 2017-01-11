@@ -167,7 +167,7 @@ void display(void) {
     else {
         speed -= 0.03 * inpscale;
     }
-    speed = speed < 0.0 ? 0.0 : speed;
+    speed = speed < 1.0 ? 1.0 : speed;
     speed = speed > 5.0 ? 5.0 : speed;
     
     // Recalculate projection
