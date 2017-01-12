@@ -623,7 +623,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     }
     
     
-    // Draw sky
+    // Draw border
     for(int i = 0; i < 20; i++) {
         ivec4_t dot;
         imat4x4_t mvp = imat4x4mul(projection, camera);

@@ -26,6 +26,18 @@
 #include "models.h"
 #include "bmp_handler.h"
 
+// The Enemy
+typedef struct enemy {
+    ivec3_t pos;
+    ivec3_t goal;
+    ivec3_t dir;
+    int32_t charge;
+    int32_t model;
+} enemy;
+
+int32_t enemy_count = 3;
+enemy enemies[3];
+
 // Keyboard state
 int keys[256];
 
@@ -36,11 +48,13 @@ float starttime;
 float lasttime;
 
 // List of models and projection matrix
-#define NUM_MODELS 4
+#define NUM_MODELS 7
 model_t models[NUM_MODELS];
 imat4x4_t projection;
 uint8_t* textures[20];
-    
+uint8_t* texture_floor;
+uint8_t* texture_overlay;
+
 // Time in seconds to nanosecond accuracy. Too lazy to do it right on win32
 #ifdef _WIN32
 float qpcFreq = 0.0;
@@ -62,6 +76,104 @@ float nanotime() {
     return((float)curtime.tv_sec + 1.0e-9 * curtime.tv_nsec);
 }
 #endif
+
+// Traces a ray against geometry
+int raytrace(ivec3_t origin_local, ivec3_t dir_local, ivec3_t* hit_pos, int32_t* hit_model, int32_t ignore_model) {
+    int32_t t = 0;
+    int32_t best_t = INT_FIXED(2000);
+    int32_t hit = 0;
+    if(hit_model != 0) {
+        *hit_model = -1;
+    }
+    dir_local = ivec3norm(dir_local);
+    for(int m = 0; m < NUM_MODELS; m++) {
+        if(m == ignore_model) {
+            continue;
+        }
+
+        ivec4_t pos_transformed = imat4x4transform(
+            imat4x4affineinverse(models[m].modelview), 
+            ivec4(origin_local.x, origin_local.y, origin_local.z, INT_FIXED(1))
+        );
+        ivec3_t pos = ivec3(pos_transformed.x, pos_transformed.y, pos_transformed.z);
+
+        ivec4_t dir_transformed = imat4x4transform(
+            imat4x4affineinverse(models[m].modelview), 
+            ivec4(dir_local.x, dir_local.y, dir_local.z, INT_FIXED(0))
+        );
+        ivec3_t dir = ivec3norm(ivec3(dir_transformed.x, dir_transformed.y, dir_transformed.z));
+
+        for(int i = 0; i < models[m].num_faces; i++) {
+            ivec3_t v0 = models[m].vertices[models[m].faces[i].v[0]];
+            ivec3_t v1 = models[m].vertices[models[m].faces[i].v[1]];
+            ivec3_t v2 = models[m].vertices[models[m].faces[i].v[2]];
+            if(ray_tri_intersect(pos, dir, v0, v1, v2, &t) != 0) {
+                if(t > 0) {
+                    if (t < best_t) {
+                        best_t = t;
+                        if(hit_model != 0) {
+                            *hit_model = m;
+                        }
+                    }
+                    hit = 1;
+                }
+            }
+        }
+    }
+
+    if(hit == 1 && hit_pos != 0) {
+        *hit_pos = ivec3(
+            origin_local.x + imul(t, dir_local.x), 
+            origin_local.y + imul(t, dir_local.y), 
+            origin_local.z + imul(t, dir_local.z)
+        );
+    }
+
+    return hit;
+}
+
+// Checks if a point is in the arena cylinder
+int point_in_arena(ivec3_t point) {
+    if(point.y < 0 || point.y > INT_FIXED(200)) {
+        return 0;
+    }
+
+    int32_t dist = FIXED_INT_ROUND(point.x) * FIXED_INT_ROUND(point.x) + FIXED_INT_ROUND(point.z) * FIXED_INT_ROUND(point.z);
+    if(dist > 256 * 256) {
+        return 0;
+    }
+
+    return 1;
+}
+
+// Returns a random point in the arena cylinder
+ivec3_t random_arena_point() {
+    ivec3_t point = ivec3(-1, -1, -1);
+    while(!point_in_arena(point)) {
+        int32_t x = idiv(INT_FIXED((rand() % (512 * 8)) - 256), INT_FIXED(8));
+        int32_t y = idiv(INT_FIXED(rand() % (200 * 8)), INT_FIXED(8));
+        int32_t z = idiv(INT_FIXED((rand() % (512 * 8)) - 256), INT_FIXED(8));
+        point = ivec3(x, y, z);
+    }
+    return point;
+}
+
+// Returns a random point that can be reached from another random point without crashing
+ivec3_t random_reachable_point(ivec3_t origin, int32_t ignore_model) {
+    ivec3_t point = ivec3(-1, -1, -1);
+    int32_t hit = 1;
+    ivec3_t hit_pos;
+    int32_t hit_model;
+    while(hit == 1) {
+        point = random_arena_point();
+
+        ivec3_t diff = ivec3sub(origin, point);
+        if(ivec3dot(diff, diff) > FLOAT_FIXED(0.1)) {
+            hit = raytrace(origin, ivec3sub(point, origin), &hit_pos, &hit_model, ignore_model);
+        }
+    }
+    return point;
+}
 
 // Moeller-Trumbore ray triangle intersection, using fixed point vector math
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
@@ -110,6 +222,17 @@ void display(void) {
     float elapsed = thistime - lasttime;
     lasttime = thistime;
 
+    // Enemies
+    for(int i = 0; i < enemy_count; i++) {
+        enemies[i].pos = ivec3add(enemies[i].pos, ivec3mul(enemies[i].dir, FLOAT_FIXED(elapsed * 20.0)));
+        ivec3_t diff = ivec3sub(enemies[i].pos, enemies[i].goal);
+        if(ivec3dot(diff, enemies[i].dir) > FLOAT_FIXED(0.0)) {
+            enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+            enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
+            // TODO can OOB, fix!
+        }
+        models[enemies[i].model].modelview = imat4x4translate(enemies[i].pos);
+    }
     
     // Input handling
     float inpscale = elapsed * 100.0;
@@ -186,7 +309,7 @@ void display(void) {
     imat4x4_t camera = imat4x4lookat(eye, lookat, up);
 
     // Draw models to screen buffer
-    rasterize(framebuffer, models, NUM_MODELS, camera, projection, textures[13]);
+    rasterize(framebuffer, models, NUM_MODELS, camera, projection, texture_floor);
 
     // Collide ship
     int32_t best_dot = INT_FIXED(2000);
@@ -212,44 +335,16 @@ void display(void) {
     if(best_dot < FLOAT_FIXED(1.5)) {
         //framebuffer[0] = 0xF0; // TODO consequences
     }
-    
-    // Ray test
-    int32_t t = 0;
-    int32_t best_t = INT_FIXED(2000);
-    ivec3_t dir_local = ivec3norm(ivec3sub(lookat, eye));
-    int hit = 0;
-    for(int m = 0; m < NUM_MODELS; m++) {
-        ivec4_t pos_transformed = imat4x4transform(
-            imat4x4affineinverse(models[m].modelview), 
-            ivec4(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos), INT_FIXED(1))
-        );
-        ivec3_t pos = ivec3(pos_transformed.x, pos_transformed.y, pos_transformed.z);
-        
-        ivec4_t dir_transformed = imat4x4transform(
-            imat4x4affineinverse(models[m].modelview), 
-            ivec4(dir_local.x, dir_local.y, dir_local.z, INT_FIXED(0))
-        );
-        ivec3_t dir = ivec3norm(ivec3(dir_transformed.x, dir_transformed.y, dir_transformed.z));
-        
-        for(int i = 0; i < models[m].num_faces; i++) {
-            ivec3_t v0 = models[m].vertices[models[m].faces[i].v[0]];
-            ivec3_t v1 = models[m].vertices[models[m].faces[i].v[1]];
-            ivec3_t v2 = models[m].vertices[models[m].faces[i].v[2]];
-            if(ray_tri_intersect(pos, dir, v0, v1, v2, &t) != 0) {
-                if(t > 0) {
-                    best_t = min(t, best_t);
-                    hit = 1;
-                }
-            }
-        }
-    }
-    
+   
+    // Trace shots
+    ivec3_t hit_pos;
+    int32_t hit_model;
+    int hit = raytrace(ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos)), ivec3sub(lookat, eye), &hit_pos, &hit_model, -1);
     if(hit == 1) {
         imat4x4_t mvp = imat4x4mul(projection, camera);
-        ivec4_t hitpos = ivec4(FLOAT_FIXED(xpos) + imul(t, dir_local.x), FLOAT_FIXED(ypos) + imul(t, dir_local.y), FLOAT_FIXED(zpos) + imul(t, dir_local.z), INT_FIXED(1));
-        hitpos = imat4x4transform(mvp, hitpos);
-        int32_t px = FIXED_INT_ROUND(VIEWPORT(hitpos.x, hitpos.w, SCREEN_WIDTH));
-        int32_t py = FIXED_INT_ROUND(VIEWPORT(hitpos.y, hitpos.w, SCREEN_HEIGHT));
+        ivec4_t hit_pos_tranformed = imat4x4transform(mvp, ivec4(hit_pos.x, hit_pos.y, hit_pos.z, INT_FIXED(1)));
+        int32_t px = FIXED_INT_ROUND(VIEWPORT(hit_pos_tranformed.x, hit_pos_tranformed.w, SCREEN_WIDTH));
+        int32_t py = FIXED_INT_ROUND(VIEWPORT(hit_pos_tranformed.y, hit_pos_tranformed.w, SCREEN_HEIGHT));
         framebuffer[px + SCREEN_WIDTH * py] = 0xF0; // TODO consequences
         
     }
@@ -257,7 +352,7 @@ void display(void) {
     // Overlay
     for(int y = 0; y < SCREEN_HEIGHT; y++) {
         for(int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t pixel = textures[14][x + y * SCREEN_WIDTH];
+            uint8_t pixel = texture_overlay[x + y * SCREEN_WIDTH];
             if(pixel != RGB332(0, 255, 0)) {
                 framebuffer[x + y * SCREEN_WIDTH] = pixel;
             }
@@ -282,47 +377,10 @@ void reshape(int w, int h) {
     glViewport(0, 0, w, h);
 }
 
-// Basic glut event loop
+// Glut input: key down
 #define MOVEINC 0.4f
 void keyboard(unsigned char key, int x, int y) {
     keys[key] = 1;
-    /*switch(key) {
-        case 'w':
-            xpos += MOVEINC * sin(anglex);
-            zpos += MOVEINC * cos(anglex);
-        break;
-
-        case 's':
-            xpos -= MOVEINC * sin(anglex);
-            zpos -= MOVEINC * cos(anglex);
-        break;
-
-        case 'a':
-            xpos += MOVEINC * sin(anglex + 3.14159 / 2.0);
-            zpos += MOVEINC * cos(anglex + 3.14159 / 2.0);
-            break;
-
-        case 'd':
-            xpos -= MOVEINC * sin(anglex + 3.14159 / 2.0);
-            zpos -= MOVEINC * cos(anglex + 3.14159 / 2.0);
-        break;
-
-        case 'q':
-            ypos -= MOVEINC;
-        break;
-
-        case 'e':
-            ypos += MOVEINC;
-        break;
-
-        case 27:
-            exit(0);
-        break;
-
-        default:
-        break;
-    }
-    glutPostRedisplay();*/
 
     switch(key) {
     case 27:
@@ -334,24 +392,9 @@ void keyboard(unsigned char key, int x, int y) {
     }
 }
 
+// Glut input: key up
 void keyboardup(unsigned char key, int x, int y) {
     keys[key] = 0;
-}
-
-#define SENS 0.001f
-void mouse(int x, int y) {
-    int xc = SCREEN_WIDTH * ZOOM_LEVEL / 2;
-    int yc = SCREEN_HEIGHT * ZOOM_LEVEL / 2;
-    if(x != xc || y != yc) {
-        anglex -= (x - xc) * SENS;
-
-        angley -= (y - yc) * SENS;
-        angley = angley > 3.0 ? 3.0 : angley;
-        angley = angley < -3.0 ? -3.0 : angley;
-
-        glutWarpPointer(xc, yc);
-    }
-    glutPostRedisplay();
 }
 
 // Texture loader
@@ -396,16 +439,28 @@ int main(int argc, char **argv) {
     models[3] = get_model_cityscape3();
     models[3].modelview = imat4x4translate(ivec3(INT_FIXED(-138), INT_FIXED(0), INT_FIXED(-80)));
 
+    models[4] = get_model_enemy();
+    models[4].modelview = imat4x4translate(random_arena_point());
+
+    models[5] = get_model_enemy();
+    models[5].modelview = imat4x4translate(random_arena_point());
+
+    models[6] = get_model_enemy();
+    models[6].modelview = imat4x4translate(random_arena_point());
+
+    // Set up enemies
+    for(int i = 0; i < enemy_count; i++) {
+        enemies[i].pos = random_arena_point(); // TODO could be inside! fix positions!
+        enemies[i].model = i + 4;
+        enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+        enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
+    }
+
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
 
     // Screen buffer
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
-
-    /*textures[0] = load_texture("baked.bmp");
-    /or (int i = 1; i < 20; i++) {
-        textures[i] = textures[0];
-    }*/
 
     textures[0] = load_texture("tower.bmp");
 
@@ -424,17 +479,22 @@ int main(int argc, char **argv) {
     textures[11] = load_texture("roof_flat.bmp");
     textures[12] = load_texture("windows.bmp");
 
-    textures[13] = load_texture("floor.bmp");
-    textures[14] = load_texture("cockpit.bmp");
+    textures[13] = load_texture("enemy.bmp");
+    textures[14] = load_texture("enemy.bmp");
+    textures[15] = load_texture("enemy.bmp");
+
+    texture_floor = load_texture("floor.bmp");
+    texture_overlay = load_texture("cockpit.bmp");
 
     int tex_offset = 0;
-    int tex_max = 0;
     for(int m = 0; m < NUM_MODELS; m++) {
+        int tex_max = 0;
         for(int i = 0; i < models[m].num_faces; i++) {
             tex_max = max(models[m].faces[i].v[7], tex_max);
             models[m].faces[i].texture = textures[models[m].faces[i].v[7] + tex_offset];
         }
-        tex_offset = tex_max + 2;
+        printf("%d -> %d\n", m, tex_offset);
+        tex_offset += tex_max + 1;
         tex_max = 0;
     }
 
@@ -450,7 +510,6 @@ int main(int argc, char **argv) {
     glutIgnoreKeyRepeat (1);
     glutKeyboardFunc(keyboard);
     glutKeyboardUpFunc(keyboardup);
-    //glutPassiveMotionFunc(mouse);
     glutSetCursor(GLUT_CURSOR_NONE); 
     glutIdleFunc(display);
     

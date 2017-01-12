@@ -7,3 +7,4 @@
 model_t get_model_cityscape2();
 model_t get_model_cityscape3();
 model_t get_model_tower();
+model_t get_model_enemy();
