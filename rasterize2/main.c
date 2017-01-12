@@ -55,6 +55,8 @@ float xpower;
 float ypower;
 float speed;
 
+int32_t paused;
+
 // Keyboard state
 int keys[256];
 
@@ -63,6 +65,7 @@ uint8_t* framebuffer;
 int framecount;
 float starttime;
 float lasttime;
+float alltime;
 
 // List of models and projection matrix
 #define NUM_MODELS 12
@@ -106,6 +109,9 @@ int raytrace(ivec3_t origin_local, ivec3_t dir_local, ivec3_t* hit_pos, int32_t*
     dir_local = ivec3norm(dir_local);
     for(int m = 0; m < NUM_MODELS; m++) {
         if(m == ignore_model) {
+            continue;
+        }
+        if(models[m].draw == 0) {
             continue;
         }
 
@@ -258,6 +264,11 @@ void display(void) {
     float elapsed = thistime - lasttime;
     lasttime = thistime;
 
+    if(paused == 1) {
+        elapsed = 0;
+    }
+    alltime += elapsed;
+
     // Enemies
     for(int i = 0; i < enemy_count; i++) {
         // Is it alive?
@@ -282,7 +293,7 @@ void display(void) {
 
         // Charge
         if(enemies[i].charging) {
-            enemies[i].charge += FLOAT_FIXED(elapsed * 0.01);
+            enemies[i].charge += FLOAT_FIXED(elapsed * 0.015);
         }
 
         // Detarget when obstructed
@@ -307,7 +318,7 @@ void display(void) {
         // Update models modelview
         models[enemies[i].model].modelview = imat4x4mul(
             imat4x4translate(enemies[i].pos),
-            imat4x4rotatey(FLOAT_FIXED(thistime))
+            imat4x4rotatey(FLOAT_FIXED(alltime))
         );
     }
     
@@ -421,11 +432,11 @@ void display(void) {
     }
 
     // Are we colliding?
-    if(best_dot < FLOAT_FIXED(1.5)) {
+    if(best_dot < FLOAT_FIXED(1.5) || !point_in_arena(eye)) {
         player_health -= 1;
-        xpos = 10;
-        ypos = 10;
-        zpos = 10;
+        xpos = 50;
+        ypos = 50;
+        zpos = 50;
     }
    
     // Trace shots
@@ -452,6 +463,7 @@ void display(void) {
             if(player_shot) {
                 enemies[hit_enemy].active = 0;
                 models[enemies[hit_enemy].model].draw = 0;
+                enemies_alive--;
             }
         }
     }
@@ -479,7 +491,9 @@ void display(void) {
     // Overlay
     for(int y = 0; y < SCREEN_HEIGHT; y++) {
         for(int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t pixel = texture_overlay[player_health - 1][x + y * SCREEN_WIDTH];
+            int cockpit_img = player_health - 1;
+            cockpit_img = cockpit_img < 0 ? 0 : cockpit_img;
+            uint8_t pixel = texture_overlay[cockpit_img][x + y * SCREEN_WIDTH];
             if(pixel != RGB332(0, 255, 0)) {
                 framebuffer[x + y * SCREEN_WIDTH] = pixel;
             }
@@ -497,6 +511,17 @@ void display(void) {
         float fps = (float)framecount / (nanotime() - starttime);
         printf("FPS: %f\n", fps);
     }
+
+    // Win / lose check
+    if(player_health == 0) {
+        paused = 1;
+        printf("You lose\n");
+    }
+    
+    if(enemies_alive == 0) {
+        paused = 1;
+        printf("You win!\n");
+    }
 }
 
 // Resizable window (does not affect actual drawing)
@@ -511,7 +536,12 @@ void keyboard(unsigned char key, int x, int y) {
 
     switch(key) {
     case 27:
-        exit(0);
+        if(paused == 1) {
+            paused = 0;
+        }
+        else {
+            paused = 1;
+        }
         break;
 
     default:
@@ -564,7 +594,7 @@ void start_game() {
 
     // Create model
     models[0] = get_model_tower();
-    models[0].draw = 0;
+    models[0].draw = 1;
 
     models[1] = get_model_cityscape3();
     models[1].modelview = imat4x4translate(ivec3(INT_FIXED(0), INT_FIXED(0), INT_FIXED(160)));
