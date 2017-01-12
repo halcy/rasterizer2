@@ -16,6 +16,7 @@
 #define min(a, b) ((a)<(b)?(a):(b))
 
 #define ZOOM_LEVEL 4
+#define MAX_CHARGE (FLOAT_FIXED(0.1))
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,11 +33,27 @@ typedef struct enemy {
     ivec3_t goal;
     ivec3_t dir;
     int32_t charge;
+    int32_t charging;
     int32_t model;
+    int32_t active;
 } enemy;
 
-int32_t enemy_count = 3;
-enemy enemies[3];
+enemy enemies[8];
+int32_t enemy_count;
+int32_t enemies_alive;
+int32_t player_charge;
+int32_t player_health;
+
+float xpos;
+float ypos;
+float zpos;
+
+float anglex;
+float angley;
+
+float xpower;
+float ypower;
+float speed;
 
 // Keyboard state
 int keys[256];
@@ -48,12 +65,13 @@ float starttime;
 float lasttime;
 
 // List of models and projection matrix
-#define NUM_MODELS 7
+#define NUM_MODELS 12
 model_t models[NUM_MODELS];
 imat4x4_t projection;
-uint8_t* textures[20];
+uint8_t* textures[32];
 uint8_t* texture_floor;
-uint8_t* texture_overlay;
+uint8_t* texture_overlay[3];
+uint8_t* texture_shot;
 
 // Time in seconds to nanosecond accuracy. Too lazy to do it right on win32
 #ifdef _WIN32
@@ -202,19 +220,37 @@ int32_t ray_tri_intersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ive
 
     *t = idiv(ivec3dot(v0v2, qvec), det);
     return 1;
-} 
+}
 
-// Glut display function.
-float xpos = 10;
-float ypos = 10;
-float zpos = 10;
+// Draw a line towards an enemy
+void enemy_line(ivec3_t enemy, ivec3_t pos, imat4x4_t mvp, int32_t len, uint8_t* framebuffer, uint8_t color) {
+    ivec3_t enemy_dir = ivec3sub(enemy, pos);
+    ivec4_t enemy_dir_transformed = imat4x4transform(mvp, ivec4(enemy_dir.x, enemy_dir.y, enemy_dir.z, INT_FIXED(0)));
+    ivec3_t dir_norm = ivec3norm(ivec3(
+        idiv(enemy_dir_transformed.x, enemy_dir_transformed.w),
+        idiv(enemy_dir_transformed.y, enemy_dir_transformed.w),
+        FLOAT_FIXED(0.0)
+    ));
 
-float anglex = 0;
-float angley = 0;
+    // too lazy for bresenham
+    int32_t aspect = idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT));
+    for(int i = FLOAT_FIXED(0.04); i < len + FLOAT_FIXED(0.04); i += FLOAT_FIXED(0.005)) {
+        int32_t px = FIXED_INT_ROUND(VIEWPORT_NO_PERSPECTIVE(imul(dir_norm.x, i), SCREEN_WIDTH));
+        int32_t py = FIXED_INT_ROUND(VIEWPORT_NO_PERSPECTIVE(imul(imul(dir_norm.y, i), aspect), SCREEN_HEIGHT));
+        framebuffer[px + py * SCREEN_WIDTH] = color;
+    }
 
-float xpower = 0;
-float ypower = 0;
-float speed = 1.0;
+    // fillup end
+    for(int i = FLOAT_FIXED(-0.02); i < FLOAT_FIXED(0.02); i += FLOAT_FIXED(0.005)) {
+        int32_t px = imul(dir_norm.x, MAX_CHARGE + FLOAT_FIXED(0.04));
+        int32_t py = imul(dir_norm.y, MAX_CHARGE + FLOAT_FIXED(0.04));
+
+        ivec3_t dir_norm_ortho = ivec3(dir_norm.y, -dir_norm.x, 0.0);
+        px = FIXED_INT_ROUND(VIEWPORT_NO_PERSPECTIVE(px + imul(dir_norm_ortho.x, i), SCREEN_WIDTH));
+        py = FIXED_INT_ROUND(VIEWPORT_NO_PERSPECTIVE(imul(py + imul(dir_norm_ortho.y, i), aspect), SCREEN_HEIGHT));
+        framebuffer[px + py * SCREEN_WIDTH] = color;
+    }
+}
 
 void display(void) {
     // Timing
@@ -224,16 +260,62 @@ void display(void) {
 
     // Enemies
     for(int i = 0; i < enemy_count; i++) {
+        // Is it alive?
+        if(enemies[i].active == 0) {
+            continue;
+        }
+
+        // Move
         enemies[i].pos = ivec3add(enemies[i].pos, ivec3mul(enemies[i].dir, FLOAT_FIXED(elapsed * 20.0)));
         ivec3_t diff = ivec3sub(enemies[i].pos, enemies[i].goal);
+
+        // Change direction
         if(ivec3dot(diff, enemies[i].dir) > FLOAT_FIXED(0.0)) {
             enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
             enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
-            // TODO can OOB, fix!
+
+            // Potentially change mode
+            if(!enemies[i].charging && ((rand() % 100) > 45)) {
+                enemies[i].charging = 1;
+            }
         }
-        models[enemies[i].model].modelview = imat4x4translate(enemies[i].pos);
+
+        // Charge
+        if(enemies[i].charging) {
+            enemies[i].charge += FLOAT_FIXED(elapsed * 0.01);
+        }
+
+        // Detarget when obstructed
+        if(enemies[i].charging) {
+            ivec3_t player_pos = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos));
+            ivec3_t dir = ivec3sub(enemies[i].pos, player_pos);
+            int32_t model_hit = -1;
+            int32_t hit = raytrace(player_pos, dir, 0, &model_hit, -1);
+            if(model_hit != enemies[i].model) {
+                enemies[i].charge = 0;
+                enemies[i].charging = 0;
+            }
+        }
+
+        // Charged?
+        if(enemies[i].charge > MAX_CHARGE) {
+            enemies[i].charge = 0;
+            enemies[i].charging = 0;
+            player_health -= 1;
+        }
+
+        // Update models modelview
+        models[enemies[i].model].modelview = imat4x4mul(
+            imat4x4translate(enemies[i].pos),
+            imat4x4rotatey(FLOAT_FIXED(thistime))
+        );
     }
     
+    // Player shot charge
+    if(player_charge <= FLOAT_FIXED(0.1)) {
+        player_charge += FLOAT_FIXED(elapsed * 0.65);
+    }
+
     // Input handling
     float inpscale = elapsed * 100.0;
     if(keys['s']) {
@@ -293,6 +375,13 @@ void display(void) {
     speed = speed < 1.0 ? 1.0 : speed;
     speed = speed > 5.0 ? 5.0 : speed;
     
+    // Shooting?
+    int32_t player_shot = 0;
+    if(keys['m'] && player_charge >= FLOAT_FIXED(0.1)) {
+        player_charge = 0;
+        player_shot = 1;
+    }
+
     // Recalculate projection
     projection = imat4x4perspective(FLOAT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
     
@@ -311,7 +400,7 @@ void display(void) {
     // Draw models to screen buffer
     rasterize(framebuffer, models, NUM_MODELS, camera, projection, texture_floor);
 
-    // Collide ship
+    // Collide ship TODO this is bad
     int32_t best_dot = INT_FIXED(2000);
     for(int m = 0; m < NUM_MODELS; m++) {
         // Inverse translate position
@@ -333,7 +422,10 @@ void display(void) {
 
     // Are we colliding?
     if(best_dot < FLOAT_FIXED(1.5)) {
-        //framebuffer[0] = 0xF0; // TODO consequences
+        player_health -= 1;
+        xpos = 10;
+        ypos = 10;
+        zpos = 10;
     }
    
     // Trace shots
@@ -345,14 +437,49 @@ void display(void) {
         ivec4_t hit_pos_tranformed = imat4x4transform(mvp, ivec4(hit_pos.x, hit_pos.y, hit_pos.z, INT_FIXED(1)));
         int32_t px = FIXED_INT_ROUND(VIEWPORT(hit_pos_tranformed.x, hit_pos_tranformed.w, SCREEN_WIDTH));
         int32_t py = FIXED_INT_ROUND(VIEWPORT(hit_pos_tranformed.y, hit_pos_tranformed.w, SCREEN_HEIGHT));
-        framebuffer[px + SCREEN_WIDTH * py] = 0xF0; // TODO consequences
+
+        int32_t hit_enemy = -1;
+        for(int i = 0; i < enemy_count; i++) {
+            if(hit_model == enemies[i].model) {
+                hit_enemy = i;
+            }
+        }
+
+        if(hit_enemy != -1) {
+            framebuffer[px + SCREEN_WIDTH * py] = 0xF0;
         
+            // Shooting?
+            if(player_shot) {
+                enemies[hit_enemy].active = 0;
+                models[enemies[hit_enemy].model].draw = 0;
+            }
+        }
     }
     
+    // Enemy lines
+    for(int i = 0; i < enemy_count; i++) {
+        if(enemies[i].charging && enemies[i].active) {
+            imat4x4_t mvp = imat4x4mul(projection, camera);
+            enemy_line(enemies[i].pos, eye, mvp, enemies[i].charge, framebuffer, RGB332(255, 0, 46));
+        }
+    }
+
+    // Shot draw
+    if(player_charge < FLOAT_FIXED(0.02)) {
+        for(int y = 0; y < SCREEN_HEIGHT; y++) {
+            for(int x = 0; x < SCREEN_WIDTH; x++) {
+                uint8_t pixel = texture_shot[x + y * SCREEN_WIDTH];
+                if(pixel != RGB332(0, 255, 0)) {
+                    framebuffer[x + y * SCREEN_WIDTH] = pixel;
+                }
+            }
+        }
+    }
+
     // Overlay
     for(int y = 0; y < SCREEN_HEIGHT; y++) {
         for(int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t pixel = texture_overlay[x + y * SCREEN_WIDTH];
+            uint8_t pixel = texture_overlay[player_health - 1][x + y * SCREEN_WIDTH];
             if(pixel != RGB332(0, 255, 0)) {
                 framebuffer[x + y * SCREEN_WIDTH] = pixel;
             }
@@ -417,43 +544,55 @@ uint8_t* load_texture(const char* path) {
     return texture;
 }
 
-// Entry point
-int main(int argc, char **argv) {
+void start_game() {
+    // Game state
+    enemy_count = 8;
+    enemies_alive = enemy_count;
+    player_charge = 0;
+    player_health = 3;
 
-    // Don't lock to 60hz (nvidia specific)
-#ifdef _WIN32
-    _putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
-#else    
-    putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
-#endif
+    xpos = 10;
+    ypos = 10;
+    zpos = 10;
+
+    anglex = 0;
+    angley = 0;
+
+    xpower = 0;
+    ypower = 0;
+    speed = 1.0;
 
     // Create model
     models[0] = get_model_tower();
+    models[0].draw = 0;
 
     models[1] = get_model_cityscape3();
     models[1].modelview = imat4x4translate(ivec3(INT_FIXED(0), INT_FIXED(0), INT_FIXED(160)));
+    models[1].draw = 1;
 
     models[2] = get_model_cityscape3();
     models[2].modelview = imat4x4translate(ivec3(INT_FIXED(138), INT_FIXED(0), INT_FIXED(-80)));
+    models[2].draw = 1;
 
     models[3] = get_model_cityscape3();
     models[3].modelview = imat4x4translate(ivec3(INT_FIXED(-138), INT_FIXED(0), INT_FIXED(-80)));
+    models[3].draw = 1;
 
-    models[4] = get_model_enemy();
-    models[4].modelview = imat4x4translate(random_arena_point());
-
-    models[5] = get_model_enemy();
-    models[5].modelview = imat4x4translate(random_arena_point());
-
-    models[6] = get_model_enemy();
-    models[6].modelview = imat4x4translate(random_arena_point());
+    for(int i = 0; i < enemy_count; i++) {
+        models[4  + i] = get_model_enemy();
+        models[4 + 1].draw = 1;
+    }
 
     // Set up enemies
     for(int i = 0; i < enemy_count; i++) {
-        enemies[i].pos = random_arena_point(); // TODO could be inside! fix positions!
+        ivec3_t start_point = random_arena_point();
+        start_point.y = INT_FIXED(192); // Upper 8 units are always empty
+
+        enemies[i].pos = start_point;
         enemies[i].model = i + 4;
         enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
         enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
+        enemies[i].active = 1;
     }
 
     // Set up projection
@@ -479,12 +618,15 @@ int main(int argc, char **argv) {
     textures[11] = load_texture("roof_flat.bmp");
     textures[12] = load_texture("windows.bmp");
 
-    textures[13] = load_texture("enemy.bmp");
-    textures[14] = load_texture("enemy.bmp");
-    textures[15] = load_texture("enemy.bmp");
+    for(int i = 0; i < enemy_count; i++) {
+        textures[13 + i] = load_texture("enemy.bmp");
+    }
 
     texture_floor = load_texture("floor.bmp");
-    texture_overlay = load_texture("cockpit.bmp");
+    texture_overlay[0] = load_texture("cockpit_low.bmp");
+    texture_overlay[1] = load_texture("cockpit_med.bmp");
+    texture_overlay[2] = load_texture("cockpit.bmp");
+    texture_shot = load_texture("shot.bmp");
 
     int tex_offset = 0;
     for(int m = 0; m < NUM_MODELS; m++) {
@@ -493,13 +635,24 @@ int main(int argc, char **argv) {
             tex_max = max(models[m].faces[i].v[7], tex_max);
             models[m].faces[i].texture = textures[models[m].faces[i].v[7] + tex_offset];
         }
-        printf("%d -> %d\n", m, tex_offset);
+        // printf("%d -> %d\n", m, tex_offset);
         tex_offset += tex_max + 1;
         tex_max = 0;
     }
 
     // Set up storage required
     prepare_geometry_storage(models, NUM_MODELS);
+}
+
+// Entry point
+int main(int argc, char **argv) {
+
+    // Don't lock to 60hz (nvidia specific)
+#ifdef _WIN32
+    _putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
+#else    
+    putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
+#endif
     
     // Create a window
     glutInit(&argc, argv);
@@ -513,6 +666,9 @@ int main(int argc, char **argv) {
     glutSetCursor(GLUT_CURSOR_NONE); 
     glutIdleFunc(display);
     
+    // Set up game
+    start_game();
+
     // Run render loop
     starttime = nanotime();
     lasttime = starttime;

@@ -72,6 +72,8 @@ typedef struct {
     int16_t num_texcoords;
     int16_t num_faces;
 
+    int32_t draw;
+
     imat4x4_t modelview;
 } model_t;
 

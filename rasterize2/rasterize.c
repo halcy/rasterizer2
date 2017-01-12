@@ -338,7 +338,11 @@ void set_shading(uint8_t* framebuffer, model_t* models, int32_t tri_idx, transfo
 
     // Shade (Hemi lighting, per face)
     ivec3_t light_dir = ivec3norm(ivec3(FLOAT_FIXED(0.5), FLOAT_FIXED(1.0), FLOAT_FIXED(0.5)));
-    tri->shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(models[sorted_triangles[tri_idx].model_id].normals[sorted_triangles[tri_idx].v[3]], light_dir)));
+    // TODO rotate
+    ivec3_t norm = models[sorted_triangles[tri_idx].model_id].normals[sorted_triangles[tri_idx].v[3]];
+    ivec4_t norm_tranformed = imat4x4transform( models[sorted_triangles[tri_idx].model_id].modelview, ivec4(norm.x, norm.y, norm.z, 0));
+    ivec3_t norm_proper = ivec3norm(ivec3(norm_tranformed.x, norm_tranformed.y, norm_tranformed.z));
+    tri->shade = imin(FLOAT_FIXED(1.0), FLOAT_FIXED(0.1) + imax(0, ivec3dot(norm_proper, light_dir)));
 }
 
 // Draw a single triangle, view clipping against near/far if need be
@@ -647,6 +651,11 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     transformed_triangle_t tri;
 
     for(int32_t i = 0; i < num_faces_total; i++ ) {
+        // Inefficient, but urgh too lazy to rewrite: skip triangle if model inactive
+        if(models[sorted_triangles[i].model_id].draw == 0) {
+            continue;
+        }
+
         // Set up triangle
         for(int ver = 0; ver < 3; ver++) {
             tri.v[ver] = transformed_vertices[sorted_triangles[i].v[ver]];
