@@ -78,9 +78,23 @@ float ypower;
 float speed;
 
 int32_t paused;
+int32_t dialog_mode;
 
 HSTREAM music;
 HSTREAM sounds[10];
+
+// Text boxies
+char** active_dialog;
+int32_t dialog_pos;
+
+char* dialog_gamestart[] = {
+    "_CYBER COMMAND_:\nCalling _CYBER CAPTAIN_!\nThis is _CYBER COMMAND_ speaking!\nIt's an emergency!",
+    "_CYBER COMMAND_:\nYou must take your _CYBER SHIP_ and\ndefeat all the _CYBER ENEMIES_!",
+    "_CYBER COMMAND_:\nControl your _CYBER SHIP_ with the\nWASD keys!",
+    "_CYBER COMMAND_:\nFire your _CYBER GUN_ with the M\nkeyand accelerate using the\nspace key!",
+    "_CYBER COMMAND_:\nGodspeed!!",
+    0
+};
 
 // Keyboard state
 int keys[256];
@@ -124,6 +138,13 @@ float nanotime() {
 }
 #endif
 
+// Start a dialog
+void start_dialog(char** dialog) {
+    dialog_pos = 0;
+    dialog_mode = 1;
+    active_dialog = dialog;
+}
+
 // Draw a single character of text at a given position
 void draw_char(char character, int px, int py, int cyber) {
     char* bitmap = font8x8_basic[character];
@@ -141,16 +162,32 @@ void draw_char(char character, int px, int py, int cyber) {
     }
 }
 
-// Draw a string. No line breaking. _ toggles CYBER MODE
-void draw_string(char* string, int px, int py) {
+// Draw a string. Manual line breaks. _ toggles CYBER MODE
+void draw_string(char* string, int px, int py, int dialogy) {
     int cybermode = 0;
     int pos = 0;
+    int pxo = px;
+    int first_line = 1;
     while(string[pos] != 0) {
         if(string[pos] == '_') {
             cybermode = cybermode == 1 ? 0 : 1;
             pos++;            
             continue;
         }
+        
+        if(string[pos] == '\n') {
+            px = pxo;
+            
+            if(dialogy == 1 && first_line == 1) {
+                first_line = 0;
+                py += 3;
+            }
+            
+            py += 9;
+            pos++;
+            continue;
+        }
+        
         draw_char(string[pos], px, py, cybermode);
         px += 8;
         pos++;
@@ -389,7 +426,7 @@ void main_loop(void) {
     float elapsed = thistime - lasttime;
     lasttime = thistime;
 
-    if(paused == 1) {
+    if(paused == 1 || dialog_mode == 1) {
         elapsed = 0;
     }
     alltime += elapsed;
@@ -680,13 +717,13 @@ void main_loop(void) {
     if(wave_show > 0 && !enemy_lock) {
         char wavetext[255];
         sprintf(wavetext, "_Wave %d_", wave_nb);
-        draw_string(wavetext, 90 - ssinc, 183);
+        draw_string(wavetext, 90 - ssinc, 183, 0);
         wave_show -= FLOAT_FIXED(elapsed);        
     }
     
     // Display Lock Alert
     if(enemy_lock) {
-        draw_string("_TARGET ALERT_", 90 - ssinc, 183);
+        draw_string("_TARGET ALERT_", 90 - ssinc, 183, 0);
     }
     
     // Unshake
@@ -701,7 +738,19 @@ void main_loop(void) {
     if(paused == 1) {
         blit_to_screen(texture_menuimages[0]);
     }
-
+    
+    // Dialog mode
+    if(dialog_mode == 1) {
+        if(active_dialog[dialog_pos] != 0) {
+            blit_to_screen(texture_menuimages[1]);
+            draw_string(active_dialog[dialog_pos], 27, 157, 1);
+        }
+        else {
+            dialog_mode = 0;
+        }
+        
+    }
+    
     // Buffer to screen
     glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
@@ -745,14 +794,20 @@ void keyboard(unsigned char key, int x, int y) {
 
     switch(key) {
     case 27:
-        if(paused == 1) {
-            paused = 0;
+        if(!dialog_mode) {
+            if(paused == 1) {
+                paused = 0;
+            }
+            else {
+                paused = 1;
+            }
         }
-        else {
-            paused = 1;
+    break;        
+    case ' ':
+        if(dialog_mode) {
+            dialog_pos++;
         }
-        break;
-
+    break;
     default:
         break;
     }
@@ -783,7 +838,11 @@ uint8_t* load_texture(const char* path) {
     return texture;
 }
 
+// Load the city level
 void load_level_city() {
+    // Dialog on
+    start_dialog(dialog_gamestart);
+    
     // Maximum enemies for this stage
     stage_enemies_max = 4;
     
@@ -847,7 +906,8 @@ void load_level_city() {
     texture_overlay[2] = load_texture("data/cockpit.bmp");
     texture_shot = load_texture("data/shot.bmp");
     texture_menuimages[0] = load_texture("data/pause.bmp");
-
+    texture_menuimages[1] = load_texture("data/textbox.bmp");
+    
     int tex_offset = 0;
     for(int m = 0; m < NUM_MODELS; m++) {
         int tex_max = 0;
