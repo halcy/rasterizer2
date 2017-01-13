@@ -638,10 +638,12 @@ void main_loop(void) {
     }
     
     // Enemy lines
+    int32_t enemy_lock = 0;
     for(int i = 0; i < enemy_count; i++) {
         if(enemies[i].charging && enemies[i].active) {
             imat4x4_t mvp = imat4x4mul(projection, camera);
             enemy_line(enemies[i].pos, eye, mvp, enemies[i].charge, framebuffer, RGB332(255, 0, 46));
+            enemy_lock = 1;
         }
     }
 
@@ -651,19 +653,19 @@ void main_loop(void) {
     }
 
     // Overlay
+    int32_t ssinc = 0;
+    int32_t invshake = INT_FIXED(5) - player_shake;
+    if(invshake != 0) {
+        ssinc = idiv(isin(invshake), invshake);
+    }
+    ssinc = ssinc > INT_FIXED(1) ? INT_FIXED(1) : ssinc;
+    ssinc = FIXED_INT_ROUND(imul(ssinc, INT_FIXED(10)));
+    
     int cockpit_img = player_health - 1;
     cockpit_img = cockpit_img < 0 ? 0 : cockpit_img;
     for(int y = 0; y < SCREEN_HEIGHT; y++) {
         for(int x = 0; x < SCREEN_WIDTH; x++) {
-            int32_t ssinc = 0;
-            int32_t invshake = INT_FIXED(5) - player_shake;
-            if(invshake != 0) {
-                ssinc = idiv(isin(invshake), invshake);
-            }
-            
-            ssinc = ssinc > INT_FIXED(1) ? INT_FIXED(1) : ssinc;
-            
-            int px = x + FIXED_INT_ROUND(imul(ssinc, INT_FIXED(10)));
+            int px = x + ssinc;
             px = px < 0 ? 0 : px;
             px = px >= SCREEN_WIDTH ? SCREEN_WIDTH - 1 : px;
             
@@ -675,11 +677,16 @@ void main_loop(void) {
     }
     
     // Display "wave n" text
-    if(wave_show > 0) {
+    if(wave_show > 0 && !enemy_lock) {
         char wavetext[255];
         sprintf(wavetext, "_Wave %d_", wave_nb);
-        draw_string(wavetext, 130, 40);
+        draw_string(wavetext, 90 - ssinc, 183);
         wave_show -= FLOAT_FIXED(elapsed);        
+    }
+    
+    // Display Lock Alert
+    if(enemy_lock) {
+        draw_string("_TARGET ALERT_", 90 - ssinc, 183);
     }
     
     // Unshake
