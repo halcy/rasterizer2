@@ -20,7 +20,8 @@ CFLAGS= \
 	-funsafe-loop-optimizations \
 	-funroll-all-loops \
 	-masm=intel -m3dnow -mtune=core2 \
-	-Ibass
+	-Ibass \
+	-g
 	
 OBJECTS=cityscape2.o \
 	cityscape3.o \
