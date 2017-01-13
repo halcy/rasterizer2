@@ -19,19 +19,20 @@ CFLAGS= \
 	-funsafe-math-optimizations \
 	-funsafe-loop-optimizations \
 	-funroll-all-loops \
-	-masm=intel -m3dnow -mtune=core2
+	-masm=intel -m3dnow -mtune=core2 \
+	-Ibass
 	
-LIBS=-lm
 OBJECTS=cityscape2.o \
 	cityscape3.o \
 	tower.o \
 	livingroom.o \
 	rasterize.o \
 	fixedmath.o \
+	enemy.o \
 	main.o
 	
 all: $(OBJECTS)
-	gcc $(OBJECTS) -lm -lGL -lglut -lGLU -o raster
+	gcc $(OBJECTS) -Lbass -lbass -lm -lGL -lglut -lGLU -o raster
 	
 clean:
 	rm -r *.o
