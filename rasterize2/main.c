@@ -27,9 +27,20 @@
 #include "models.h"
 #include "bmp_handler.h"
 
-#include "text/font8x8basic.h"
+#include "text/font8x8_basic.h"
 
 #include <bass.h>
+
+uint8_t cyber_cols[8] = {
+    RGB332(255, 71,  254),
+    RGB332(255, 116, 254),
+    RGB332(255, 155, 254),
+    RGB332(255, 190, 254),
+    RGB332(255, 255, 255),
+    RGB332(190, 255, 253),
+    RGB332(156, 255, 253),
+    RGB332(0  , 255, 253) 
+};
 
 // The Enemy
 typedef struct enemy {
@@ -51,6 +62,9 @@ int32_t player_charge;
 int32_t player_health;
 int32_t player_shake;
 int32_t stage_enemies_max;
+
+int32_t wave_show;
+int32_t wave_nb;
 
 float xpos;
 float ypos;
@@ -109,6 +123,39 @@ float nanotime() {
     return((float)curtime.tv_sec + 1.0e-9 * curtime.tv_nsec);
 }
 #endif
+
+// Draw a single character of text at a given position
+void draw_char(char character, int px, int py, int cyber) {
+    char* bitmap = font8x8_basic[character];
+    uint8_t col = 0xFF;
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 8; y++) {
+            if(cyber == 1) {
+                col = cyber_cols[y];
+            }
+            if(bitmap[y] & 1 << x) {
+                framebuffer[px + x + (SCREEN_HEIGHT - (py + y)) * SCREEN_WIDTH] = col;
+            }
+            
+        }
+    }
+}
+
+// Draw a string. No line breaking. _ toggles CYBER MODE
+void draw_string(char* string, int px, int py) {
+    int cybermode = 0;
+    int pos = 0;
+    while(string[pos] != 0) {
+        if(string[pos] == '_') {
+            cybermode = cybermode == 1 ? 0 : 1;
+            pos++;            
+            continue;
+        }
+        draw_char(string[pos], px, py, cybermode);
+        px += 8;
+        pos++;
+    }
+}
 
 // Moeller-Trumbore ray triangle intersection, using fixed point vector math
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
@@ -284,6 +331,10 @@ void blit_to_screen(uint8_t* blit_texture) {
 
 // Sends out a wave of enemies
 void start_wave(int count) {
+    // Set wave display active
+    wave_show = INT_FIXED(2);
+    wave_nb += 1;
+    
     // Set all enemies inactive
     for(int i = 0; i < ENEMY_MAX; i++) {
         enemies[i].active = 0;
@@ -322,6 +373,7 @@ void start_game() {
     ypower = 0;
     speed = 1.0;
     
+    wave_nb = 0;
     start_wave(2);
 }
 
@@ -620,6 +672,14 @@ void main_loop(void) {
                 framebuffer[x + y * SCREEN_WIDTH] = pixel;
             }
         }
+    }
+    
+    // Display "wave n" text
+    if(wave_show > 0) {
+        char wavetext[255];
+        sprintf(wavetext, "_Wave %d_", wave_nb);
+        draw_string(wavetext, 130, 40);
+        wave_show -= FLOAT_FIXED(elapsed);        
     }
     
     // Unshake
