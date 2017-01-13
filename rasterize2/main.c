@@ -27,7 +27,20 @@
 #include "models.h"
 #include "bmp_handler.h"
 
+#include "text/font8x8_basic.h"
+
 #include <bass.h>
+
+uint8_t cyber_cols[8] = {
+    RGB332(255, 71,  254),
+    RGB332(255, 116, 254),
+    RGB332(255, 155, 254),
+    RGB332(255, 190, 254),
+    RGB332(255, 255, 255),
+    RGB332(190, 255, 253),
+    RGB332(156, 255, 253),
+    RGB332(0  , 255, 253) 
+};
 
 // The Enemy
 typedef struct enemy {
@@ -38,13 +51,20 @@ typedef struct enemy {
     int32_t charging;
     int32_t model;
     int32_t active;
+    int32_t scale;
 } enemy;
 
-enemy enemies[8];
+#define ENEMY_MAX 16
+enemy enemies[ENEMY_MAX];
 int32_t enemy_count;
 int32_t enemies_alive;
 int32_t player_charge;
 int32_t player_health;
+int32_t player_shake;
+int32_t stage_enemies_max;
+
+int32_t wave_show;
+int32_t wave_nb;
 
 float xpos;
 float ypos;
@@ -58,9 +78,38 @@ float ypower;
 float speed;
 
 int32_t paused;
+int32_t dialog_mode;
 
 HSTREAM music;
 HSTREAM sounds[10];
+
+// Text boxies
+char** active_dialog;
+int32_t dialog_pos;
+
+char* dialog_gamestart[] = {
+    "_CYBER COMMAND_:\nCalling _CYBER CAPTAIN_!\nThis is _CYBER COMMAND_ speaking!\nIt's an emergency!",
+    "_CYBER COMMAND_:\nYou must take your _CYBER SHIP_ and\ndefeat all the _CYBER ENEMIES_!",
+    "_CYBER COMMAND_:\nControl your _CYBER SHIP_ with the\nWASD keys!",
+    "_CYBER COMMAND_:\nFire your _CYBER GUN_ with the M\nkeyand accelerate using the\nspace key!",
+    "_CYBER COMMAND_:\nWhen the _CYBER ENEMIES_ lock on to\nyou, hide behind _CYBER GEOMETRY_ to\nbreak their line of sight!",    
+    "_CYBER COMMAND_:\nGodspeed!!",
+    0
+};
+
+char* dialog_win[] = {
+    "_CYBER COMMAND_:\n_CYBER CAPTAIN_! You have saved us\nall from certain destruction!",
+    "_CYBER COMMAND_:\nSurely your _CYBER VICTORY_ will\nbe remembered forever\n",
+    "_CYBER COMMAND_:\n_CYBER CONGRATULATIONS_!!",
+    0
+};
+
+char* dialog_lose[] = {
+    "_CYBER COMMAND_:\nOh no! CYBER CAPTAINs_ ship\nhas been destroyed!",
+    "_CYBER COMMAND_:\nWe're _CYBER DOOMED_!",
+    0
+};
+
 
 // Keyboard state
 int keys[256];
@@ -73,10 +122,10 @@ float lasttime;
 float alltime;
 
 // List of models and projection matrix
-#define NUM_MODELS 12
+#define NUM_MODELS 20
 model_t models[NUM_MODELS];
 imat4x4_t projection;
-uint8_t* textures[32];
+uint8_t* textures[64];
 uint8_t* texture_floor;
 uint8_t* texture_overlay[3];
 uint8_t* texture_shot;
@@ -103,6 +152,91 @@ float nanotime() {
     return((float)curtime.tv_sec + 1.0e-9 * curtime.tv_nsec);
 }
 #endif
+
+// Start a dialog
+void start_dialog(char** dialog) {
+    dialog_pos = 0;
+    dialog_mode = 1;
+    active_dialog = dialog;
+}
+
+// Draw a single character of text at a given position
+void draw_char(char character, int px, int py, int cyber) {
+    char* bitmap = font8x8_basic[character];
+    uint8_t col = 0xFF;
+    for(int x = 0; x < 8; x++) {
+        for(int y = 0; y < 8; y++) {
+            if(cyber == 1) {
+                col = cyber_cols[y];
+            }
+            if(bitmap[y] & 1 << x) {
+                framebuffer[px + x + (SCREEN_HEIGHT - (py + y)) * SCREEN_WIDTH] = col;
+            }
+            
+        }
+    }
+}
+
+// Draw a string. Manual line breaks. _ toggles CYBER MODE
+void draw_string(char* string, int px, int py, int dialogy) {
+    int cybermode = 0;
+    int pos = 0;
+    int pxo = px;
+    int first_line = 1;
+    while(string[pos] != 0) {
+        if(string[pos] == '_') {
+            cybermode = cybermode == 1 ? 0 : 1;
+            pos++;            
+            continue;
+        }
+        
+        if(string[pos] == '\n') {
+            px = pxo;
+            
+            if(dialogy == 1 && first_line == 1) {
+                first_line = 0;
+                py += 3;
+            }
+            
+            py += 9;
+            pos++;
+            continue;
+        }
+        
+        draw_char(string[pos], px, py, cybermode);
+        px += 8;
+        pos++;
+    }
+}
+
+// Moeller-Trumbore ray triangle intersection, using fixed point vector math
+// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
+int32_t ray_tri_intersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ivec3_t v2, int32_t* t) {
+    ivec3_t v0v1 = ivec3sub(v1, v0);
+    ivec3_t v0v2 = ivec3sub(v2, v0);
+    ivec3_t pvec = ivec3cross(dir, v0v2);
+    
+    int32_t det = ivec3dot(v0v1, pvec);
+
+    if(iabs(det) < FLOAT_FIXED(0.001)) {
+        return 0;
+    }
+
+    ivec3_t tvec = ivec3sub(orig, v0);
+    int32_t u = idiv(ivec3dot(tvec, pvec), det);
+    if(u < 0 || u > INT_FIXED(1)) {
+        return 0;
+    }
+    
+    ivec3_t qvec = ivec3cross(tvec, v0v1);
+    int32_t v = idiv(ivec3dot(dir, qvec), det);
+    if(v < 0 || u + v > INT_FIXED(1)) {
+        return 0;
+    }
+
+    *t = idiv(ivec3dot(v0v2, qvec), det);
+    return 1;
+}
 
 // Traces a ray against geometry
 int raytrace(ivec3_t origin_local, ivec3_t dir_local, ivec3_t* hit_pos, int32_t* hit_model, int32_t ignore_model) {
@@ -205,35 +339,6 @@ ivec3_t random_reachable_point(ivec3_t origin, int32_t ignore_model) {
     return point;
 }
 
-// Moeller-Trumbore ray triangle intersection, using fixed point vector math
-// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection
-int32_t ray_tri_intersect(ivec3_t orig, ivec3_t dir, ivec3_t v0, ivec3_t v1, ivec3_t v2, int32_t* t) {
-    ivec3_t v0v1 = ivec3sub(v1, v0);
-    ivec3_t v0v2 = ivec3sub(v2, v0);
-    ivec3_t pvec = ivec3cross(dir, v0v2);
-    
-    int32_t det = ivec3dot(v0v1, pvec);
-
-    if(iabs(det) < FLOAT_FIXED(0.001)) {
-        return 0;
-    }
-
-    ivec3_t tvec = ivec3sub(orig, v0);
-    int32_t u = idiv(ivec3dot(tvec, pvec), det);
-    if(u < 0 || u > INT_FIXED(1)) {
-        return 0;
-    }
-    
-    ivec3_t qvec = ivec3cross(tvec, v0v1);
-    int32_t v = idiv(ivec3dot(dir, qvec), det);
-    if(v < 0 || u + v > INT_FIXED(1)) {
-        return 0;
-    }
-
-    *t = idiv(ivec3dot(v0v2, qvec), det);
-    return 1;
-}
-
 // Draw a line towards an enemy
 void enemy_line(ivec3_t enemy, ivec3_t pos, imat4x4_t mvp, int32_t len, uint8_t* framebuffer, uint8_t color) {
     ivec3_t enemy_dir = ivec3sub(enemy, pos);
@@ -275,6 +380,55 @@ void blit_to_screen(uint8_t* blit_texture) {
         }
     }
 }
+
+// Sends out a wave of enemies
+void start_wave(int count) {
+    // Set wave display active
+    wave_show = INT_FIXED(2);
+    wave_nb += 1;
+    
+    // Set all enemies inactive
+    for(int i = 0; i < ENEMY_MAX; i++) {
+        enemies[i].active = 0;
+    }
+    
+    // Set up enemies
+    enemy_count = count;
+    enemies_alive = enemy_count;
+    for(int i = 0; i < enemy_count; i++) {
+        ivec3_t start_point = random_arena_point();
+        start_point.y = INT_FIXED(192); // Upper 8 units are always empty
+
+        enemies[i].pos = start_point;
+        enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+        enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
+        enemies[i].scale = FLOAT_FIXED(0.1);
+        enemies[i].active = 1;
+    }
+}
+
+// Resets game state
+void start_game() {
+    // Game state
+    player_charge = 0;
+    player_health = 3;
+    player_shake = 0;
+    
+    xpos = 10;
+    ypos = 10;
+    zpos = 10;
+
+    anglex = 0;
+    angley = 0;
+
+    xpower = 0;
+    ypower = 0;
+    speed = 1.0;
+    
+    wave_nb = 0;
+    start_wave(2);
+}
+
 // Update function
 void main_loop(void) {
     // Restart music
@@ -287,42 +441,65 @@ void main_loop(void) {
     float elapsed = thistime - lasttime;
     lasttime = thistime;
 
-    if(paused == 1) {
+    if(paused == 1 || dialog_mode == 1) {
         elapsed = 0;
     }
     alltime += elapsed;
 
     // Enemies
-    for(int i = 0; i < enemy_count; i++) {
+    for(int i = 0; i < ENEMY_MAX; i++) {
         // Is it alive?
         if(enemies[i].active == 0) {
+            if(enemies[i].scale > FLOAT_FIXED(0.1)) {
+                models[enemies[i].model].modelview = imat4x4mul(
+                    imat4x4mul(
+                        imat4x4translate(enemies[i].pos),
+                        imat4x4rotatey(FLOAT_FIXED(alltime))
+                    ),
+                    imat4x4scale(enemies[i].scale)
+                );
+                enemies[i].scale -= FLOAT_FIXED(elapsed * 2.0);
+            }
+            else {
+                models[enemies[i].model].draw = 0;
+            }
             continue;
         }
-
+        models[enemies[i].model].draw = 1;
+        
+        // Make it bigger
+        if(enemies[i].scale < INT_FIXED(1)) {
+            enemies[i].scale += FLOAT_FIXED(elapsed);
+        }
+        else {
+            enemies[i].scale = INT_FIXED(1);
+        }
+        
         // Move
         enemies[i].pos = ivec3add(enemies[i].pos, ivec3mul(enemies[i].dir, FLOAT_FIXED(elapsed * 20.0)));
         ivec3_t diff = ivec3sub(enemies[i].pos, enemies[i].goal);
 
         // Change direction
         if(ivec3dot(diff, enemies[i].dir) > FLOAT_FIXED(0.0)) {
-            enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
-            enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
-
             // Potentially change mode
-            if(!enemies[i].charging && ((rand() % 100) > 45)) {
+            if(!enemies[i].charging && ((rand() % 100) > 30)) {
                 enemies[i].charging = 1;
+            }
+            else {
+                enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+                enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
             }
         }
 
         // Charge
         if(enemies[i].charging) {
-            enemies[i].charge += FLOAT_FIXED(elapsed * 0.015);
+            enemies[i].charge += FLOAT_FIXED(elapsed * 0.016);
         }
 
         // Detarget when obstructed
         if(enemies[i].charging) {
             ivec3_t player_pos = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos));
-            ivec3_t dir = ivec3sub(enemies[i].pos, player_pos);
+            ivec3_t dir = ivec3norm(ivec3sub(enemies[i].pos, player_pos));
             int32_t model_hit = -1;
             int32_t hit = raytrace(player_pos, dir, 0, &model_hit, -1);
             if(model_hit != enemies[i].model) {
@@ -331,18 +508,22 @@ void main_loop(void) {
             }
         }
 
-        // Charged?
+        // Charged? Hit player.
         if(enemies[i].charge > MAX_CHARGE) {
             enemies[i].charge = 0;
             enemies[i].charging = 0;
             player_health -= 1;
             BASS_ChannelPlay(sounds[1], 1);
+            player_shake = INT_FIXED(5);
         }
 
         // Update models modelview
         models[enemies[i].model].modelview = imat4x4mul(
-            imat4x4translate(enemies[i].pos),
-            imat4x4rotatey(FLOAT_FIXED(alltime))
+            imat4x4mul(
+                imat4x4translate(enemies[i].pos),
+                imat4x4rotatey(FLOAT_FIXED(alltime))
+            ),
+            imat4x4scale(enemies[i].scale)
         );
     }
     
@@ -439,6 +620,10 @@ void main_loop(void) {
     // Collide ship TODO this is bad
     int32_t best_dot = INT_FIXED(2000);
     for(int m = 0; m < NUM_MODELS; m++) {
+        if(models[m].draw == 0) {
+            continue;
+        }
+        
         // Inverse translate position
         ivec4_t pos_transformed = imat4x4transform(
             imat4x4affineinverse(models[m].modelview), 
@@ -462,6 +647,17 @@ void main_loop(void) {
         xpos = 50;
         ypos = 50;
         zpos = 50;
+
+        anglex = 0;
+        angley = 0;
+
+        xpower = 0;
+        ypower = 0;
+        speed = 1.0;
+        
+        BASS_ChannelPlay(sounds[1], 1);
+        
+        player_shake = INT_FIXED(5);
     }
    
     // Trace shots
@@ -485,9 +681,8 @@ void main_loop(void) {
             framebuffer[px + SCREEN_WIDTH * py] = 0xF0;
         
             // Shooting?
-            if(player_shot) {
+            if(player_shot && enemies[hit_enemy].active == 1) {
                 enemies[hit_enemy].active = 0;
-                models[enemies[hit_enemy].model].draw = 0;
                 enemies_alive--;
                 BASS_ChannelPlay(sounds[1], 1);
             }
@@ -495,10 +690,12 @@ void main_loop(void) {
     }
     
     // Enemy lines
+    int32_t enemy_lock = 0;
     for(int i = 0; i < enemy_count; i++) {
         if(enemies[i].charging && enemies[i].active) {
             imat4x4_t mvp = imat4x4mul(projection, camera);
             enemy_line(enemies[i].pos, eye, mvp, enemies[i].charge, framebuffer, RGB332(255, 0, 46));
+            enemy_lock = 1;
         }
     }
 
@@ -508,15 +705,67 @@ void main_loop(void) {
     }
 
     // Overlay
+    int32_t ssinc = 0;
+    int32_t invshake = INT_FIXED(5) - player_shake;
+    if(invshake != 0) {
+        ssinc = idiv(isin(invshake), invshake);
+    }
+    ssinc = ssinc > INT_FIXED(1) ? INT_FIXED(1) : ssinc;
+    ssinc = FIXED_INT_ROUND(imul(ssinc, INT_FIXED(10)));
+    
     int cockpit_img = player_health - 1;
     cockpit_img = cockpit_img < 0 ? 0 : cockpit_img;
-    blit_to_screen(texture_overlay[cockpit_img]);
-
+    for(int y = 0; y < SCREEN_HEIGHT; y++) {
+        for(int x = 0; x < SCREEN_WIDTH; x++) {
+            int px = x + ssinc;
+            px = px < 0 ? 0 : px;
+            px = px >= SCREEN_WIDTH ? SCREEN_WIDTH - 1 : px;
+            
+            uint8_t pixel = texture_overlay[cockpit_img][px + y * SCREEN_WIDTH];
+            if(pixel != RGB332(0, 255, 0)) {
+                framebuffer[x + y * SCREEN_WIDTH] = pixel;
+            }
+        }
+    }
+    
+    // Display "wave n" text
+    if(wave_show > 0 && !enemy_lock) {
+        char wavetext[255];
+        sprintf(wavetext, "_Wave %d_", wave_nb);
+        draw_string(wavetext, 90 - ssinc, 183, 0);
+        wave_show -= FLOAT_FIXED(elapsed);        
+    }
+    
+    // Display Lock Alert
+    if(enemy_lock) {
+        draw_string("_TARGET ALERT_", 90 - ssinc, 183, 0);
+    }
+    
+    // Unshake
+    if(player_shake > 0) {
+        player_shake -= FLOAT_FIXED(elapsed * 6.0);
+    }
+    else {
+        player_shake = 0;
+    }
+    
     // "Paused"
     if(paused == 1) {
         blit_to_screen(texture_menuimages[0]);
     }
-
+    
+    // Dialog mode
+    if(dialog_mode == 1) {
+        if(active_dialog[dialog_pos] != 0) {
+            blit_to_screen(texture_menuimages[1]);
+            draw_string(active_dialog[dialog_pos], 27, 157, 1);
+        }
+        else {
+            dialog_mode = 0;
+        }
+        
+    }
+    
     // Buffer to screen
     glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
@@ -531,13 +780,18 @@ void main_loop(void) {
 
     // Win / lose check
     if(player_health == 0) {
-        paused = 1;
-        printf("You lose\n");
+        start_game();
+        start_dialog(dialog_lose);
     }
     
     if(enemies_alive == 0) {
-        paused = 1;
-        printf("You win!\n");
+        if(enemy_count == stage_enemies_max) {
+            start_game();
+            start_dialog(dialog_win);
+        }
+        else {
+            start_wave(enemy_count * 2);
+        }
     }
 }
 
@@ -553,14 +807,20 @@ void keyboard(unsigned char key, int x, int y) {
 
     switch(key) {
     case 27:
-        if(paused == 1) {
-            paused = 0;
+        if(!dialog_mode) {
+            if(paused == 1) {
+                paused = 0;
+            }
+            else {
+                paused = 1;
+            }
         }
-        else {
-            paused = 1;
+    break;        
+    case ' ':
+        if(dialog_mode) {
+            dialog_pos++;
         }
-        break;
-
+    break;
     default:
         break;
     }
@@ -591,24 +851,19 @@ uint8_t* load_texture(const char* path) {
     return texture;
 }
 
-void start_game() {
-    // Game state
-    enemy_count = 8;
-    enemies_alive = enemy_count;
-    player_charge = 0;
-    player_health = 3;
-
-    xpos = 10;
-    ypos = 10;
-    zpos = 10;
-
-    anglex = 0;
-    angley = 0;
-
-    xpower = 0;
-    ypower = 0;
-    speed = 1.0;
-
+// Load the city level
+void load_level_city() {
+    // Dialog on
+    start_dialog(dialog_gamestart);
+    
+    // Maximum enemies for this stage
+    stage_enemies_max = 4;
+    
+    // Set all models to no draw
+    for(int i = 0; i < NUM_MODELS; i++) {
+        models[i].draw = 0;
+    }
+    
     // Create model
     models[0] = get_model_tower();
     models[0].draw = 1;
@@ -625,57 +880,47 @@ void start_game() {
     models[3].modelview = imat4x4translate(ivec3(INT_FIXED(-138), INT_FIXED(0), INT_FIXED(-80)));
     models[3].draw = 1;
 
-    for(int i = 0; i < enemy_count; i++) {
+    for(int i = 0; i < ENEMY_MAX; i++) {
         models[4  + i] = get_model_enemy();
-        models[4 + 1].draw = 1;
-    }
-
-    // Set up enemies
-    for(int i = 0; i < enemy_count; i++) {
-        ivec3_t start_point = random_arena_point();
-        start_point.y = INT_FIXED(192); // Upper 8 units are always empty
-
-        enemies[i].pos = start_point;
+        models[4 + i].draw = 1;
         enemies[i].model = i + 4;
-        enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
-        enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
-        enemies[i].active = 1;
     }
-
-    // Set up projection
+    
+     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
 
     // Screen buffer
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
 
-    textures[0] = load_texture("tower.bmp");
+    textures[0] = load_texture("data/tower.bmp");
 
-    textures[1] = load_texture("windows.bmp");
-    textures[2] = load_texture("roof_sharp.bmp");
-    textures[3] = load_texture("roof_flat.bmp");
-    textures[4] = load_texture("windows.bmp");
+    textures[1] = load_texture("data/windows.bmp");
+    textures[2] = load_texture("data/roof_sharp.bmp");
+    textures[3] = load_texture("data/roof_flat.bmp");
+    textures[4] = load_texture("data/windows.bmp");
 
-    textures[5] = load_texture("windows.bmp");
-    textures[6] = load_texture("roof_sharp.bmp");
-    textures[7] = load_texture("roof_flat.bmp");
-    textures[8] = load_texture("windows.bmp");
+    textures[5] = load_texture("data/windows.bmp");
+    textures[6] = load_texture("data/roof_sharp.bmp");
+    textures[7] = load_texture("data/roof_flat.bmp");
+    textures[8] = load_texture("data/windows.bmp");
 
-    textures[9] = load_texture("windows.bmp");
-    textures[10] = load_texture("roof_sharp.bmp");
-    textures[11] = load_texture("roof_flat.bmp");
-    textures[12] = load_texture("windows.bmp");
+    textures[9] = load_texture("data/windows.bmp");
+    textures[10] = load_texture("data/roof_sharp.bmp");
+    textures[11] = load_texture("data/roof_flat.bmp");
+    textures[12] = load_texture("data/windows.bmp");
 
-    for(int i = 0; i < enemy_count; i++) {
-        textures[13 + i] = load_texture("enemy.bmp");
+    for(int i = 0; i < ENEMY_MAX; i++) {
+        textures[13 + i] = load_texture("data/enemy.bmp");
     }
 
-    texture_floor = load_texture("floor.bmp");
-    texture_overlay[0] = load_texture("cockpit_low.bmp");
-    texture_overlay[1] = load_texture("cockpit_med.bmp");
-    texture_overlay[2] = load_texture("cockpit.bmp");
-    texture_shot = load_texture("shot.bmp");
-    texture_menuimages[0] = load_texture("pause.bmp");
-
+    texture_floor = load_texture("data/floor.bmp");
+    texture_overlay[0] = load_texture("data/cockpit_low.bmp");
+    texture_overlay[1] = load_texture("data/cockpit_med.bmp");
+    texture_overlay[2] = load_texture("data/cockpit.bmp");
+    texture_shot = load_texture("data/shot.bmp");
+    texture_menuimages[0] = load_texture("data/pause.bmp");
+    texture_menuimages[1] = load_texture("data/textbox.bmp");
+    
     int tex_offset = 0;
     for(int m = 0; m < NUM_MODELS; m++) {
         int tex_max = 0;
@@ -719,13 +964,14 @@ int main(int argc, char **argv) {
     BASS_Start();
 
     // Music!
-    music = BASS_StreamCreateFile(0, "cyber.ogg", 0, 0, BASS_STREAM_PRESCAN);
+    music = BASS_StreamCreateFile(0, "data/cyber.ogg", 0, 0, BASS_STREAM_PRESCAN);
     BASS_ChannelPlay(music, 0);
 
-    sounds[0] = BASS_StreamCreateFile(0, "fwup.ogg", 0, 0, BASS_STREAM_PRESCAN);
-    sounds[1] = BASS_StreamCreateFile(0, "bwoom.ogg", 0, 0, BASS_STREAM_PRESCAN);
+    sounds[0] = BASS_StreamCreateFile(0, "data/fwup.ogg", 0, 0, BASS_STREAM_PRESCAN);
+    sounds[1] = BASS_StreamCreateFile(0, "data/bwoom.ogg", 0, 0, BASS_STREAM_PRESCAN);
 
     // Set up game
+    load_level_city();
     start_game();
 
     // Run render loop

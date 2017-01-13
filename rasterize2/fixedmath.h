@@ -162,6 +162,15 @@ static inline imat4x4_t imat4x4translate(ivec3_t v) {
     );
 }
 
+static inline imat4x4_t imat4x4scale(int s) {
+    return imat4x4(
+        s, 0, 0, 0,
+        0, s, 0, 0,
+        0, 0, s, 0,
+        0, 0, 0, INT_FIXED(1)
+    );
+}
+
 static inline imat4x4_t imat4x4perspective(int32_t fov, int32_t aspect, int32_t znear, int32_t zfar) {
     int32_t norm_term = FLOAT_FIXED(0.00277777777); // 1 / (180 * 2). Mind: Trig function angles are 0 -> 1
     int32_t f = idiv(INT_FIXED(1), itan(imul(fov, norm_term)));
