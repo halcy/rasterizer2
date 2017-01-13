@@ -80,6 +80,7 @@ uint8_t* textures[32];
 uint8_t* texture_floor;
 uint8_t* texture_overlay[3];
 uint8_t* texture_shot;
+uint8_t* texture_menuimages[10];
 
 // Time in seconds to nanosecond accuracy. Too lazy to do it right on win32
 #ifdef _WIN32
@@ -263,6 +264,17 @@ void enemy_line(ivec3_t enemy, ivec3_t pos, imat4x4_t mvp, int32_t len, uint8_t*
     }
 }
 
+// Draws an overlay on the screen
+void blit_to_screen(uint8_t* blit_texture) {
+    for(int y = 0; y < SCREEN_HEIGHT; y++) {
+        for(int x = 0; x < SCREEN_WIDTH; x++) {
+            uint8_t pixel = blit_texture[x + y * SCREEN_WIDTH];
+            if(pixel != RGB332(0, 255, 0)) {
+                framebuffer[x + y * SCREEN_WIDTH] = pixel;
+            }
+        }
+    }
+}
 // Update function
 void main_loop(void) {
     // Restart music
@@ -492,26 +504,17 @@ void main_loop(void) {
 
     // Shot draw
     if(player_charge < FLOAT_FIXED(0.02)) {
-        for(int y = 0; y < SCREEN_HEIGHT; y++) {
-            for(int x = 0; x < SCREEN_WIDTH; x++) {
-                uint8_t pixel = texture_shot[x + y * SCREEN_WIDTH];
-                if(pixel != RGB332(0, 255, 0)) {
-                    framebuffer[x + y * SCREEN_WIDTH] = pixel;
-                }
-            }
-        }
+        blit_to_screen(texture_shot);
     }
 
     // Overlay
-    for(int y = 0; y < SCREEN_HEIGHT; y++) {
-        for(int x = 0; x < SCREEN_WIDTH; x++) {
-            int cockpit_img = player_health - 1;
-            cockpit_img = cockpit_img < 0 ? 0 : cockpit_img;
-            uint8_t pixel = texture_overlay[cockpit_img][x + y * SCREEN_WIDTH];
-            if(pixel != RGB332(0, 255, 0)) {
-                framebuffer[x + y * SCREEN_WIDTH] = pixel;
-            }
-        }
+    int cockpit_img = player_health - 1;
+    cockpit_img = cockpit_img < 0 ? 0 : cockpit_img;
+    blit_to_screen(texture_overlay[cockpit_img]);
+
+    // "Paused"
+    if(paused == 1) {
+        blit_to_screen(texture_menuimages[0]);
     }
 
     // Buffer to screen
@@ -671,6 +674,7 @@ void start_game() {
     texture_overlay[1] = load_texture("cockpit_med.bmp");
     texture_overlay[2] = load_texture("cockpit.bmp");
     texture_shot = load_texture("shot.bmp");
+    texture_menuimages[0] = load_texture("pause.bmp");
 
     int tex_offset = 0;
     for(int m = 0; m < NUM_MODELS; m++) {
