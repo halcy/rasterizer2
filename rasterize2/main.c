@@ -27,6 +27,8 @@
 #include "models.h"
 #include "bmp_handler.h"
 
+#include "text/font8x8basic.h"
+
 #include <bass.h>
 
 // The Enemy
@@ -38,15 +40,17 @@ typedef struct enemy {
     int32_t charging;
     int32_t model;
     int32_t active;
+    int32_t scale;
 } enemy;
 
-#define ENEMY_MAX 8
+#define ENEMY_MAX 16
 enemy enemies[ENEMY_MAX];
 int32_t enemy_count;
 int32_t enemies_alive;
 int32_t player_charge;
 int32_t player_health;
 int32_t player_shake;
+int32_t stage_enemies_max;
 
 float xpos;
 float ypos;
@@ -75,10 +79,10 @@ float lasttime;
 float alltime;
 
 // List of models and projection matrix
-#define NUM_MODELS 12
+#define NUM_MODELS 20
 model_t models[NUM_MODELS];
 imat4x4_t projection;
-uint8_t* textures[32];
+uint8_t* textures[64];
 uint8_t* texture_floor;
 uint8_t* texture_overlay[3];
 uint8_t* texture_shot;
@@ -278,11 +282,31 @@ void blit_to_screen(uint8_t* blit_texture) {
     }
 }
 
+// Sends out a wave of enemies
+void start_wave(int count) {
+    // Set all enemies inactive
+    for(int i = 0; i < ENEMY_MAX; i++) {
+        enemies[i].active = 0;
+    }
+    
+    // Set up enemies
+    enemy_count = count;
+    enemies_alive = enemy_count;
+    for(int i = 0; i < enemy_count; i++) {
+        ivec3_t start_point = random_arena_point();
+        start_point.y = INT_FIXED(192); // Upper 8 units are always empty
+
+        enemies[i].pos = start_point;
+        enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+        enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
+        enemies[i].scale = FLOAT_FIXED(0.1);
+        enemies[i].active = 1;
+    }
+}
+
 // Resets game state
 void start_game() {
     // Game state
-    enemy_count = ENEMY_MAX;
-    enemies_alive = enemy_count;
     player_charge = 0;
     player_health = 3;
     player_shake = 0;
@@ -297,17 +321,8 @@ void start_game() {
     xpower = 0;
     ypower = 0;
     speed = 1.0;
-
-    // Set up enemies
-    for(int i = 0; i < enemy_count; i++) {
-        ivec3_t start_point = random_arena_point();
-        start_point.y = INT_FIXED(192); // Upper 8 units are always empty
-
-        enemies[i].pos = start_point;
-        enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
-        enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
-        enemies[i].active = 1;
-    }
+    
+    start_wave(2);
 }
 
 // Update function
@@ -328,13 +343,33 @@ void main_loop(void) {
     alltime += elapsed;
 
     // Enemies
-    for(int i = 0; i < enemy_count; i++) {
+    for(int i = 0; i < ENEMY_MAX; i++) {
         // Is it alive?
         if(enemies[i].active == 0) {
-            models[enemies[i].model].draw = 0;
+            if(enemies[i].scale > FLOAT_FIXED(0.1)) {
+                models[enemies[i].model].modelview = imat4x4mul(
+                    imat4x4mul(
+                        imat4x4translate(enemies[i].pos),
+                        imat4x4rotatey(FLOAT_FIXED(alltime))
+                    ),
+                    imat4x4scale(enemies[i].scale)
+                );
+                enemies[i].scale -= FLOAT_FIXED(elapsed * 2.0);
+            }
+            else {
+                models[enemies[i].model].draw = 0;
+            }
             continue;
         }
         models[enemies[i].model].draw = 1;
+        
+        // Make it bigger
+        if(enemies[i].scale < INT_FIXED(1)) {
+            enemies[i].scale += FLOAT_FIXED(elapsed);
+        }
+        else {
+            enemies[i].scale = INT_FIXED(1);
+        }
         
         // Move
         enemies[i].pos = ivec3add(enemies[i].pos, ivec3mul(enemies[i].dir, FLOAT_FIXED(elapsed * 20.0)));
@@ -342,24 +377,25 @@ void main_loop(void) {
 
         // Change direction
         if(ivec3dot(diff, enemies[i].dir) > FLOAT_FIXED(0.0)) {
-            enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
-            enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
-
             // Potentially change mode
-            if(!enemies[i].charging && ((rand() % 100) > 45)) {
+            if(!enemies[i].charging && ((rand() % 100) > 30)) {
                 enemies[i].charging = 1;
+            }
+            else {
+                enemies[i].goal = random_reachable_point(enemies[i].pos, enemies[i].model);
+                enemies[i].dir = ivec3norm(ivec3sub(enemies[i].goal, enemies[i].pos));
             }
         }
 
         // Charge
         if(enemies[i].charging) {
-            enemies[i].charge += FLOAT_FIXED(elapsed * 0.015);
+            enemies[i].charge += FLOAT_FIXED(elapsed * 0.016);
         }
 
         // Detarget when obstructed
         if(enemies[i].charging) {
             ivec3_t player_pos = ivec3(FLOAT_FIXED(xpos), FLOAT_FIXED(ypos), FLOAT_FIXED(zpos));
-            ivec3_t dir = ivec3sub(enemies[i].pos, player_pos);
+            ivec3_t dir = ivec3norm(ivec3sub(enemies[i].pos, player_pos));
             int32_t model_hit = -1;
             int32_t hit = raytrace(player_pos, dir, 0, &model_hit, -1);
             if(model_hit != enemies[i].model) {
@@ -379,8 +415,11 @@ void main_loop(void) {
 
         // Update models modelview
         models[enemies[i].model].modelview = imat4x4mul(
-            imat4x4translate(enemies[i].pos),
-            imat4x4rotatey(FLOAT_FIXED(alltime))
+            imat4x4mul(
+                imat4x4translate(enemies[i].pos),
+                imat4x4rotatey(FLOAT_FIXED(alltime))
+            ),
+            imat4x4scale(enemies[i].scale)
         );
     }
     
@@ -477,6 +516,10 @@ void main_loop(void) {
     // Collide ship TODO this is bad
     int32_t best_dot = INT_FIXED(2000);
     for(int m = 0; m < NUM_MODELS; m++) {
+        if(models[m].draw == 0) {
+            continue;
+        }
+        
         // Inverse translate position
         ivec4_t pos_transformed = imat4x4transform(
             imat4x4affineinverse(models[m].modelview), 
@@ -534,7 +577,7 @@ void main_loop(void) {
             framebuffer[px + SCREEN_WIDTH * py] = 0xF0;
         
             // Shooting?
-            if(player_shot) {
+            if(player_shot && enemies[hit_enemy].active == 1) {
                 enemies[hit_enemy].active = 0;
                 enemies_alive--;
                 BASS_ChannelPlay(sounds[1], 1);
@@ -612,9 +655,14 @@ void main_loop(void) {
     }
     
     if(enemies_alive == 0) {
-        start_game();
-        paused = 1;
-        printf("You win!\n");
+        if(enemy_count == stage_enemies_max) {
+            paused = 1;
+            start_game();
+            printf("You win!\n");
+        }
+        else {
+            start_wave(enemy_count * 2);
+        }
     }
 }
 
@@ -669,6 +717,14 @@ uint8_t* load_texture(const char* path) {
 }
 
 void load_level_city() {
+    // Maximum enemies for this stage
+    stage_enemies_max = 4;
+    
+    // Set all models to no draw
+    for(int i = 0; i < NUM_MODELS; i++) {
+        models[i].draw = 0;
+    }
+    
     // Create model
     models[0] = get_model_tower();
     models[0].draw = 1;
