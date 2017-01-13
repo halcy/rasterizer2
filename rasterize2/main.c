@@ -27,6 +27,8 @@
 #include "models.h"
 #include "bmp_handler.h"
 
+#include <bass.h>
+
 // The Enemy
 typedef struct enemy {
     ivec3_t pos;
@@ -56,6 +58,9 @@ float ypower;
 float speed;
 
 int32_t paused;
+
+HSTREAM music;
+HSTREAM sounds[10];
 
 // Keyboard state
 int keys[256];
@@ -174,9 +179,9 @@ int point_in_arena(ivec3_t point) {
 ivec3_t random_arena_point() {
     ivec3_t point = ivec3(-1, -1, -1);
     while(!point_in_arena(point)) {
-        int32_t x = idiv(INT_FIXED((rand() % (512 * 8)) - 256), INT_FIXED(8));
+        int32_t x = idiv(INT_FIXED((rand() % (512 * 8)) - 256 * 8), INT_FIXED(8));
         int32_t y = idiv(INT_FIXED(rand() % (200 * 8)), INT_FIXED(8));
-        int32_t z = idiv(INT_FIXED((rand() % (512 * 8)) - 256), INT_FIXED(8));
+        int32_t z = idiv(INT_FIXED((rand() % (512 * 8)) - 256 * 8), INT_FIXED(8));
         point = ivec3(x, y, z);
     }
     return point;
@@ -258,7 +263,13 @@ void enemy_line(ivec3_t enemy, ivec3_t pos, imat4x4_t mvp, int32_t len, uint8_t*
     }
 }
 
-void display(void) {
+// Update function
+void main_loop(void) {
+    // Restart music
+    if(!BASS_ChannelIsActive(music)) {
+        BASS_ChannelPlay(music, 1);
+    }
+
     // Timing
     float thistime = nanotime();
     float elapsed = thistime - lasttime;
@@ -313,6 +324,7 @@ void display(void) {
             enemies[i].charge = 0;
             enemies[i].charging = 0;
             player_health -= 1;
+            BASS_ChannelPlay(sounds[1], 1);
         }
 
         // Update models modelview
@@ -391,6 +403,7 @@ void display(void) {
     if(keys['m'] && player_charge >= FLOAT_FIXED(0.1)) {
         player_charge = 0;
         player_shot = 1;
+        BASS_ChannelPlay(sounds[0], 1);
     }
 
     // Recalculate projection
@@ -464,6 +477,7 @@ void display(void) {
                 enemies[hit_enemy].active = 0;
                 models[enemies[hit_enemy].model].draw = 0;
                 enemies_alive--;
+                BASS_ChannelPlay(sounds[1], 1);
             }
         }
     }
@@ -683,7 +697,7 @@ int main(int argc, char **argv) {
 #else    
     putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
 #endif
-    
+
     // Create a window
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -694,8 +708,19 @@ int main(int argc, char **argv) {
     glutKeyboardFunc(keyboard);
     glutKeyboardUpFunc(keyboardup);
     glutSetCursor(GLUT_CURSOR_NONE); 
-    glutIdleFunc(display);
+    glutIdleFunc(main_loop);
     
+    // Sound
+    BASS_Init(-1, 44100, 0, 0, 0);
+    BASS_Start();
+
+    // Music!
+    music = BASS_StreamCreateFile(0, "cyber.ogg", 0, 0, BASS_STREAM_PRESCAN);
+    BASS_ChannelPlay(music, 0);
+
+    sounds[0] = BASS_StreamCreateFile(0, "fwup.ogg", 0, 0, BASS_STREAM_PRESCAN);
+    sounds[1] = BASS_StreamCreateFile(0, "bwoom.ogg", 0, 0, BASS_STREAM_PRESCAN);
+
     // Set up game
     start_game();
 
