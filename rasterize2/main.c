@@ -92,9 +92,24 @@ char* dialog_gamestart[] = {
     "_CYBER COMMAND_:\nYou must take your _CYBER SHIP_ and\ndefeat all the _CYBER ENEMIES_!",
     "_CYBER COMMAND_:\nControl your _CYBER SHIP_ with the\nWASD keys!",
     "_CYBER COMMAND_:\nFire your _CYBER GUN_ with the M\nkeyand accelerate using the\nspace key!",
+    "_CYBER COMMAND_:\nWhen the _CYBER ENEMIES_ lock on to\nyou, hide behind _CYBER GEOMETRY_ to\nbreak their line of sight!",    
     "_CYBER COMMAND_:\nGodspeed!!",
     0
 };
+
+char* dialog_win[] = {
+    "_CYBER COMMAND_:\n_CYBER CAPTAIN_! You have saved us\nall from certain destruction!",
+    "_CYBER COMMAND_:\nSurely your _CYBER VICTORY_ will\nbe remembered forever\n",
+    "_CYBER COMMAND_:\n_CYBER CONGRATULATIONS_!!",
+    0
+};
+
+char* dialog_lose[] = {
+    "_CYBER COMMAND_:\nOh no! CYBER CAPTAINs_ ship\nhas been destroyed!",
+    "_CYBER COMMAND_:\nWe're _CYBER DOOMED_!",
+    0
+};
+
 
 // Keyboard state
 int keys[256];
@@ -766,15 +781,13 @@ void main_loop(void) {
     // Win / lose check
     if(player_health == 0) {
         start_game();
-        paused = 1;
-        printf("You lose\n");
+        start_dialog(dialog_lose);
     }
     
     if(enemies_alive == 0) {
         if(enemy_count == stage_enemies_max) {
-            paused = 1;
             start_game();
-            printf("You win!\n");
+            start_dialog(dialog_win);
         }
         else {
             start_wave(enemy_count * 2);
