@@ -1,0 +1,35 @@
+# Blender MTL File: 'core.blend'
+# Material Count: 3
+
+newmtl Small_blocks
+Ns 96.078431
+Ka 1.000000 1.000000 1.000000
+Kd 0.167617 0.171227 0.145838
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd C:\Users\halcy\Desktop\fastrast\rasterizer2\rasterize2\data\core.bmp
+
+newmtl Walls
+Ns 96.078431
+Ka 1.000000 1.000000 1.000000
+Kd 0.106292 0.084426 0.074591
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd C:\Users\halcy\Desktop\fastrast\rasterizer2\rasterize2\data\core.bmp
+
+newmtl Windows
+Ns 96.078431
+Ka 1.000000 1.000000 1.000000
+Kd 0.000000 0.775576 0.800000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd C:\Users\halcy\Desktop\fastrast\rasterizer2\rasterize2\data\core.bmp

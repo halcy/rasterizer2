@@ -27,11 +27,29 @@
     <ClCompile Include="cityscape2.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="livingroom.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cityscape3.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tower.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="timing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="enemy.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ringworld.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="cityscape.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="rasterize.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -41,8 +59,15 @@
     <ClInclude Include="bmp_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="models.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="timing.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="models\convert-obj.pl" />
   </ItemGroup>
 </Project>

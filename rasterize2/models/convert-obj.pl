@@ -6,9 +6,9 @@
 use warnings;
 use strict;
 
-my $scale = 2.5;
+my $scale = 3.7;
 my $offset = 0;
-my $name = "enemy";
+my $name = "core";
 
 my @vertices;
 my @texcoords;

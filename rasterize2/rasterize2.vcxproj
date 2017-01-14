@@ -112,23 +112,34 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cityscape2.c" />
+    <ClCompile Include="cityscape3.c" />
+    <ClCompile Include="core.c" />
+    <ClCompile Include="enemy.c" />
+    <ClCompile Include="livingroom.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="rasterize.c" />
     <ClCompile Include="fixedmath.c" />
+    <ClCompile Include="ringworld.c" />
+    <ClCompile Include="timing.c" />
+    <ClCompile Include="tower.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bmp_handler.h" />
-    <ClInclude Include="cityscape.h" />
+    <ClInclude Include="models.h" />
     <ClInclude Include="fixedmath.h" />
     <ClInclude Include="rasterize.h" />
+    <ClInclude Include="timing.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="models\convert-obj.pl" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets" Condition="Exists('..\packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets')" />
     <Import Project="..\packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets" Condition="Exists('..\packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets')" />
+    <Import Project="..\packages\BASS.redist.2.4.12.1\build\native\BASS.redist.targets" Condition="Exists('..\packages\BASS.redist.2.4.12.1\build\native\BASS.redist.targets')" />
+    <Import Project="..\packages\BASS.2.4.12.1\build\native\BASS.targets" Condition="Exists('..\packages\BASS.2.4.12.1\build\native\BASS.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
@@ -136,5 +147,7 @@
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\nupengl.core.redist.0.1.0.1\build\native\nupengl.core.redist.targets'))" />
     <Error Condition="!Exists('..\packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\nupengl.core.0.1.0.1\build\native\nupengl.core.targets'))" />
+    <Error Condition="!Exists('..\packages\BASS.redist.2.4.12.1\build\native\BASS.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\BASS.redist.2.4.12.1\build\native\BASS.redist.targets'))" />
+    <Error Condition="!Exists('..\packages\BASS.2.4.12.1\build\native\BASS.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\BASS.2.4.12.1\build\native\BASS.targets'))" />
   </Target>
 </Project>

@@ -307,6 +307,9 @@ void prepare_geometry_storage(model_t* models, int32_t num_models) {
         vert_offset +=  models[m].num_vertices;
         face_offset += models[m].num_faces;
     }
+
+    num_faces_total = face_count;
+    num_vertices_total = vert_count;
 }
 
 // Cleanup
@@ -565,7 +568,7 @@ void draw_floor(uint8_t* framebuffer, imat4x4_t camera, imat4x4_t projection, ui
 }
 
 // Actual model rasterizer. Prepare model storage before rendering (whenever scene changes)
-void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection, uint8_t* floor_tex) {
+void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x4_t camera, imat4x4_t projection, uint8_t* floor_tex, uint8_t sky_color) {
     int32_t vert_offset = 0;
     for(int32_t m = 0; m < num_models; m++) {
         // Mvp matrix from camera, mv and p
@@ -618,7 +621,7 @@ void rasterize(uint8_t* framebuffer, model_t* models, int32_t num_models, imat4x
     qsort(sorted_triangles, num_faces_total, sizeof(triangle_t), &triAvgDepthCompare);
     
     // Clear screen
-    memset(framebuffer, RGB332(36, 0, 85), SCREEN_HEIGHT * SCREEN_WIDTH);
+    memset(framebuffer, sky_color, SCREEN_HEIGHT * SCREEN_WIDTH);
     
     // Floor / ceiling
     if(floor_tex != 0) {
