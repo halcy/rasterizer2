@@ -15,7 +15,7 @@
 
 // "Signed shift" warnings. Should your compiler actually not
 // compile signed shifts as arithmetic, then well, change this.
-#define FLOAT_FIXED(val)  (int32_t)((val)*4096)
+#define FLOAT_FIXED(val)  (int32_t)((val)*4096.0)
 #define INT_FIXED(val) ((val) << 12)
 
 #define FIXED_FLOAT(val) ((float)(val) / 4096.0)

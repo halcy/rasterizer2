@@ -1,8 +1,8 @@
 /**
  * Cool game
- * TODO: 
- * - Level Transitions
+ * TODO: Bugs, many, probably
  */
+
 #ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS
 #endif
@@ -72,26 +72,32 @@ int32_t player_shake;
 int32_t stage_enemies_max;
 int32_t texture_count;
 
-int (*stage_onupdate)(float, float);
-int (*stage_onwin)();
+void (*stage_onupdate)(double, double);
+void (*stage_onwin)();
+void (*stage_dialogfun)();
 
 int32_t wave_show;
 int32_t wave_nb;
 
-float xpos;
-float ypos;
-float zpos;
+double xpos;
+double ypos;
+double zpos;
 
-float anglex;
-float angley;
+double anglex;
+double angley;
 
-float xpower;
-float ypower;
-float speed;
+double xpower;
+double ypower;
+double speed;
 
 int32_t paused;
 int32_t dialog_mode;
 int32_t menu_mode;
+int32_t menu_blink;
+int32_t from_menu;
+int32_t transition_state;
+int32_t have_transitioned;
+int32_t debug_mode = 0;
 
 HSTREAM music;
 HSTREAM sounds[10];
@@ -101,6 +107,8 @@ char** active_dialog;
 int32_t dialog_pos;
 
 char* dialog_gamestart[] = {
+    "/",
+    "~",
     "_CYBER COMMAND_:\nCalling _CYBER CAPTAIN_!\nThis is _CYBER COMMAND_ speaking!\nIt's an emergency!",
     "_CYBER COMMAND_:\nYou must take your _CYBER SHIP_ and\ndefeat all the _CYBER ENEMIES_!",
     "_CYBER COMMAND_:\nControl your _CYBER SHIP_ with the\nWASD keys!",
@@ -111,12 +119,17 @@ char* dialog_gamestart[] = {
 };
 
 char* dialog_ringsstart[] = {
+    "_CYBER COMMAND_:\nThat's taken care of! However!\nI fear the worst!",
+    "_CYBER COMMAND_:\nQuick, _CYBER CAPTAIN_!\nEnter the _CYBER TOWER_!",
+    "~"
     "_CYBER COMMAND_:\nIt's a calamity!\nThe _CYBER ENEMIES_ have breached\nthe _CYBER TOWER_ and are",
     "_CYBER COMMAND_:\nattacking the _CYBER RING WORLDS_!\n _CYBER CAPTAIN_! Save us!",
     0
 };
 
 char* dialog_corestart[] = {
+    "_CYBER COMMAND_:\nYou've done it!\nThe _CYBER\nRINGS_ are safe!\nBut it is not over yet!",
+    "~",
     "_CYBER COMMAND_:\nOh no! They've breached the\n_CYBER CORE_!",
     "_CYBER COMMAND_:\nThis is the final stand, _CYBER\nCAPTAIN_!\nIt's all or nothing!",
     0
@@ -145,9 +158,9 @@ int keys[256];
 // Frame buffer, frame counter, rendering start time
 uint8_t* framebuffer;
 int framecount;
-float starttime;
-float lasttime;
-float alltime;
+double starttime;
+double lasttime;
+double alltime;
 
 // List of models and projection matrix
 #define NUM_MODELS_MAX 20
@@ -163,18 +176,20 @@ uint8_t* texture_menuimages[10];
 // Time in seconds to nanosecond accuracy.
 // qpf every round because it can apparently change?
 #ifdef _WIN32
-float nanotime() {
+double nanotime() {
     LARGE_INTEGER li;
     QueryPerformanceFrequency(&li);
     double qpcFreq = (double)li.QuadPart;
     QueryPerformanceCounter(&li);
-    return (float)((double)li.QuadPart / qpcFreq);
+    double qpcVal = (double)li.QuadPart;
+    double qpcProper = qpcVal / qpcFreq;
+    return qpcProper;
 }
 #else
-float nanotime() {
+double nanotime() {
     struct timespec curtime;
     clock_gettime(CLOCK_MONOTONIC, &curtime);
-    return((float)curtime.tv_sec + 1.0e-9 * curtime.tv_nsec);
+    return((double)curtime.tv_sec + 1.0e-9 * curtime.tv_nsec);
 }
 #endif
 
@@ -502,7 +517,7 @@ void core_onwin() {
 }
 
 // Core model updater
-void core_onupdate(float elapsed, float alltime) {
+void core_onupdate(double elapsed, double alltime) {
     for(int i = 0; i < 3; i++) {
         models[i].modelview = imat4x4mul(
             imat4x4rotatey(FLOAT_FIXED(alltime * 0.02) + FLOAT_FIXED(i / 3.0))
@@ -519,11 +534,11 @@ void load_level_core() {
     // Change music
     change_music("data/core.ogg");
 
-    // Dialog on
-    start_dialog(dialog_corestart);
-
     // Maximum enemies for this stage
     stage_enemies_max = 16;
+    if(debug_mode) {
+        stage_enemies_max = 2;
+    }
 
     // Set all models to no draw
     for(int i = 0; i < num_models; i++) {
@@ -580,10 +595,13 @@ void load_level_core() {
 
     // Sky
     sky_color = RGB332(197, 46, 106);
+
+    // Begin
+    start_game();
 }
 
 // Ringworld stage updater
-void ringworld_onupdate(float elapsed, float alltime) {
+void ringworld_onupdate(double elapsed, double alltime) {
     models[0].modelview = imat4x4mul(
         imat4x4translate(ivec3(INT_FIXED(0), INT_FIXED(95), INT_FIXED(0))),
         imat4x4rotatey(FLOAT_FIXED(alltime * 0.01))
@@ -592,8 +610,8 @@ void ringworld_onupdate(float elapsed, float alltime) {
 
 // Ring world "on win" function
 void ringworld_onwin() {
-    load_level_core();
-    start_game();
+    stage_dialogfun = load_level_core;
+    start_dialog(dialog_corestart);
 }
 
 // Load the "ringworld" level
@@ -604,11 +622,11 @@ void load_level_ringworld() {
     // Reset textures
     free_textures();
 
-    // Dialog on
-    start_dialog(dialog_ringsstart);
-
     // Maximum enemies for this stage
     stage_enemies_max = 8;
+    if(debug_mode) {
+        stage_enemies_max = 2;
+    }
 
     // Set all models to no draw
     for(int i = 0; i < num_models; i++) {
@@ -656,12 +674,14 @@ void load_level_ringworld() {
 
     // Sky
     sky_color = RGB332(0, 0, 0);
+
+    start_game();
 }
 
 // City "on win" function
 void city_onwin() {
-    load_level_ringworld();
-    start_game();
+    stage_dialogfun = load_level_ringworld;
+    start_dialog(dialog_ringsstart);
 }
 
 // Load the "city" level
@@ -669,11 +689,11 @@ void load_level_city() {
     // Change music
     change_music("data/city.ogg");
 
-    // Dialog on
-    start_dialog(dialog_gamestart);
-
     // Maximum enemies for this stage
     stage_enemies_max = 4;
+    if(debug_mode) {
+        stage_enemies_max = 2;
+    }
 
     // Set all models to no draw
     for(int i = 0; i < num_models; i++) {
@@ -747,15 +767,13 @@ void load_level_city() {
 
     // Sky
     sky_color = RGB332(36, 0, 85);
+
+    start_game();
 }
 
 // Update function: In game only
-void run_game() {
+void run_game(double elapsed) {
     // Timing
-    float thistime = nanotime();
-    float elapsed = thistime - lasttime;
-    lasttime = thistime;
-
     if(paused == 1 || dialog_mode == 1) {
         elapsed = 0;
     }
@@ -858,7 +876,7 @@ void run_game() {
     }
 
     // Input handling
-    float inpscale = elapsed * 100.0;
+    double inpscale = elapsed * 100.0;
     if(keys['s']) {
         ypower += inpscale * 0.02 / 100.0;
     } 
@@ -1097,18 +1115,30 @@ void run_game() {
     // Dialog mode
     if(dialog_mode == 1) {
         if(active_dialog[dialog_pos] != 0) {
-            if (active_dialog[dialog_pos][0] == '*') {
+            if(active_dialog[dialog_pos][0] == '*') {
                 menu_mode = 1;
                 change_music("data/cyber.ogg");
                 dialog_mode = 0;
                 dialog_pos++;
                 return;
             }
-            else if (active_dialog[dialog_pos][0] == '-') {
+            else if(active_dialog[dialog_pos][0] == '/') {
+                blit_to_screen(texture_menuimages[2]);
+                if(from_menu == 1) {
+                    dialog_pos++;
+                    from_menu = 0;
+                }
+            }
+            else if(active_dialog[dialog_pos][0] == '-') {
                 blit_to_screen(texture_menuimages[4]);
             }
-            else if (active_dialog[dialog_pos][0] == '+') {
+            else if(active_dialog[dialog_pos][0] == '+') {
                 blit_to_screen(texture_menuimages[3]);
+            }
+            else if(active_dialog[dialog_pos][0] == '~' && transition_state == 0) {
+                transition_state = FLOAT_FIXED(3.0);
+                have_transitioned = 0;
+                dialog_pos--;
             }
             else {
                 blit_to_screen(texture_menuimages[1]);
@@ -1138,18 +1168,79 @@ void run_game() {
 
 // Update function
 void main_loop(void) {
+    // Timing
+    double thistime = nanotime();
+    double elapsed = thistime - lasttime;
+    lasttime = thistime;
+
     // Restart music
     if(!BASS_ChannelIsActive(music)) {
         BASS_ChannelPlay(music, 1);
     }
 
+    // Draw
     if(!menu_mode) {
-        run_game();
+        run_game(elapsed);
     }
     else {
+        menu_blink -= FLOAT_FIXED(1.0 * elapsed);
+        if(menu_blink < FLOAT_FIXED(-1.0)) {
+            menu_blink = FLOAT_FIXED(1.0);
+        }
         blit_to_screen(texture_menuimages[2]);
+        if(debug_mode == 1) {
+            draw_string("_easy mode_", 10, 30, 0);
+        }
+
+        if(menu_blink > FLOAT_FIXED(-0.5)) {
+            draw_string("space to start >", 10, 10, 0);
+            draw_string("p to toggle difficulty", 10, 20, 0);
+        }
     }
-    
+
+    // Transition shutter
+    if(transition_state > 0) {
+        transition_state -= FLOAT_FIXED(2.0 * elapsed);
+
+        // Down
+        int height = 0;
+        if(transition_state >= FLOAT_FIXED(2.0)) {
+            height = FIXED_INT(imul(FLOAT_FIXED(3.0) - transition_state, INT_FIXED(SCREEN_HEIGHT)));
+        } 
+        else if(transition_state >= FLOAT_FIXED(1.0)) {
+            // Lowered
+            blit_to_screen(texture_menuimages[5]);
+            height = -1;
+
+            if(have_transitioned == 0) {
+                dialog_pos += 2;
+                have_transitioned = 1;
+
+                if(stage_dialogfun != 0) {
+                    stage_dialogfun();
+                }
+            }
+        }
+        else {
+            // Up
+            height = FIXED_INT(imul(transition_state, INT_FIXED(SCREEN_HEIGHT)));
+        }
+
+        if(height != -1) {
+            for(int y = SCREEN_HEIGHT - 1; y > SCREEN_HEIGHT - height; y--) {
+                for(int x = 0; x < SCREEN_WIDTH; x++) {
+                    uint8_t pixel = texture_menuimages[5][x + y * SCREEN_WIDTH];
+                    if(pixel != RGB332(0, 255, 0)) {
+                        framebuffer[x + y * SCREEN_WIDTH] = pixel;
+                    }
+                }
+            }
+        }
+    }
+    else {
+        transition_state = 0;
+    }
+
     // Buffer to screen
     glPixelZoom(ZOOM_LEVEL, ZOOM_LEVEL);
     glDrawPixels(SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, framebuffer);
@@ -1158,7 +1249,7 @@ void main_loop(void) {
     // Calculate fps and print
     framecount++;
     if(framecount % 1000 == 0) {
-        float fps = (float)framecount / (nanotime() - starttime);
+        double fps = (double)framecount / (nanotime() - starttime);
         printf("FPS: %f\n", fps);
     }
 }
@@ -1184,14 +1275,27 @@ void keyboard(unsigned char key, int x, int y) {
         }
     break;        
     case ' ':
-        if(dialog_mode) {
-            dialog_pos++;
-        }
+        if(!transition_state) {
+            if(dialog_mode) {
+                dialog_pos++;
+            }
 
+            if(menu_mode) {
+                stage_dialogfun = load_level_city;
+                start_dialog(dialog_gamestart);
+                menu_mode = 0;
+                from_menu = 1;
+            }
+        }
+    break;
+    case 'p':
         if(menu_mode) {
-            load_level_city();
-            start_game();
-            menu_mode = 0;
+            if(debug_mode == 1) {
+                debug_mode = 0;
+            }
+            else {
+                debug_mode = 1;
+            }
         }
     break;
     default:
@@ -1207,13 +1311,14 @@ void keyboardup(unsigned char key, int x, int y) {
 // Entry point
 int main(int argc, char **argv) {
 
+/*
     // Don't lock to 60hz (nvidia specific)
 #ifdef _WIN32
     _putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
 #else    
     putenv( (char *) "__GL_SYNC_TO_VBLANK=0" );
 #endif
-
+*/
     // Create a window
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -1240,7 +1345,7 @@ int main(int argc, char **argv) {
     // Set up projection
     projection = imat4x4perspective(INT_FIXED(45), idiv(INT_FIXED(SCREEN_WIDTH), INT_FIXED(SCREEN_HEIGHT)), ZNEAR, ZFAR);
 
-    // Screen buffer
+    // Screen buffers
     framebuffer = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
 
     // Load up a bunch of global textures
@@ -1256,6 +1361,7 @@ int main(int argc, char **argv) {
     texture_menuimages[2] = load_texture("data/title.bmp");
     texture_menuimages[3] = load_texture("data/win.bmp");
     texture_menuimages[4] = load_texture("data/lose.bmp");
+    texture_menuimages[5] = load_texture("data/barrier.bmp");
 
     texture_count = 0;
     texture_floor = 0;
